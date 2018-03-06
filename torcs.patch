@@ -1,0 +1,1155 @@
+diff --git a/scr_server/scr_server.cpp b/scr_server/scr_server.cpp
+index 78089a2..b3650a6 100644
+--- a/scr_server/scr_server.cpp
++++ b/scr_server/scr_server.cpp
+@@ -126,9 +126,28 @@ static Sensors *focusSens[NBBOTS];//ML
+ static float trackSensAngle[NBBOTS][19];
+ 
+ static const char* botname[NBBOTS] = {"scr_server 1", "scr_server 2", "scr_server 3", "scr_server 4", "scr_server 5", "scr_server 6", "scr_server 7", "scr_server 8", "scr_server 9", "scr_server 10"};
++// static const char* botname[NBBOTS] = {"dqn"};
+ 
+ static unsigned long total_tics[NBBOTS];
+ 
++extern float* angle_dqn_main;
++extern float* track_dqn_main;
++extern float* track_pos_dqn_main;
++extern float* speed_x_dqn_main;
++extern float* speed_y_dqn_main;
++extern float* speed_z_dqn_main;
++extern float* wheel_dqn_main;
++extern float* rpm_dqn_main;
++
++
++extern bool* pis_restart_main_write;
++extern double* psteer_main_write;
++extern double* pbrake_main_write;
++extern double* paccel_main_write;
++extern int* pgear_main_write;
++extern double* pclutch_main_write;
++extern bool* is_ready_dqn_main;
++extern bool is_sim_dqn_main;
+ /*
+  * Module entry point
+  */
+@@ -162,19 +181,19 @@ InitFuncPt(int index, void *pt)
+     itf->rbShutdown = shutdown;	 /* Called before the module is unloaded */
+     itf->index      = index; 	 /* Index used if multiple interfaces */
+ 
+-	#ifdef _WIN32
+-     /* WinSock Startup */
++// 	#ifdef _WIN32
++//      /* WinSock Startup */
+ 
+-     WSADATA wsaData={0};
+-     WORD wVer = MAKEWORD(2,2);
+-     int nRet = WSAStartup(wVer,&wsaData);
++//      WSADATA wsaData={0};
++//      WORD wVer = MAKEWORD(2,2);
++//      int nRet = WSAStartup(wVer,&wsaData);
+ 
+-     if(nRet == SOCKET_ERROR)
+-     {
+- 	std::cout << "Failed to init WinSock library" << std::endl;
+-	exit(1);
+-     }
+-#endif
++//      if(nRet == SOCKET_ERROR)
++//      {
++//  	std::cout << "Failed to init WinSock library" << std::endl;
++// 	exit(1);
++//      }
++// #endif
+ 
+     return 0;
+ }
+@@ -185,6 +204,7 @@ initTrack(int index, tTrack* track, void *carHandle, void **carParmHandle, tSitu
+ {
+     curTrack = track;
+     *carParmHandle = NULL;
++    
+ #ifdef _PRINT_RACE_RESULTS__
+     trackName = strrchr(track->filename, '/') + 1;
+ #endif
+@@ -205,8 +225,7 @@ newrace(int index, tCarElt* car, tSituation *s)
+     char line[UDP_MSGLEN];
+ 
+     // Set timeout
+-    if (getTimeout()>0)
+-    	UDP_TIMEOUT = getTimeout();
++
+ 
+     //Set sensor range
+     if (strcmp(getVersion(),"2009")==0)
+@@ -222,86 +241,15 @@ newrace(int index, tCarElt* car, tSituation *s)
+     	exit(0);
+     }
+ 
+-    listenSocket[index] = socket(AF_INET, SOCK_DGRAM, 0);
+-    if (listenSocket[index] < 0)
+-    {
+-        std::cerr << "Error: cannot create listenSocket!";
+-        exit(1);
+-    }
+ 
+     srand(time(NULL));
+-
+-    // Bind listen socket to listen port.
+-    serverAddress[index].sin_family = AF_INET;
+-    serverAddress[index].sin_addr.s_addr = htonl(INADDR_ANY);
+-    serverAddress[index].sin_port = htons(UDP_LISTEN_PORT+index);
+-
+-    if (bind(listenSocket[index],
+-             (struct sockaddr *) &serverAddress[index],
+-             sizeof(serverAddress[index])) < 0)
+-    {
+-        std::cerr << "cannot bind socket";
+-        exit(1);
+-    }
+-
+-    // Wait for connections from clients.
+-    listen(listenSocket[index], 5);
+-
+-    std::cout << "Waiting for request on port " << UDP_LISTEN_PORT+index << "\n";
+-
+-    // Loop until a client identifies correctly
+-    while (!identified)
+-    {
+-        //std::cout << "!identified" << "\n";
+-
+-        clientAddressLength[index] = sizeof(clientAddress[index]);
+-
+-        // Set line to all zeroes
+-        memset(line, 0x0, UDP_MSGLEN);
+-        if (recvfrom(listenSocket[index], line, UDP_MSGLEN, 0,
+-                     (struct sockaddr *) &clientAddress[index],
+-                     &clientAddressLength[index]) < 0)
+-        {
+-            std::cerr << "Error: problem in receiving from the listen socket";
+-            exit(1);
+-        }
+-
+-#ifdef __UDP_SERVER_VERBOSE__
+-        // show the client's IP address
+-        std::cout << "  from " << inet_ntoa(clientAddress[index].sin_addr);
+-
+-        // show the client's port number.
+-        std::cout << ":" << ntohs(clientAddress[index].sin_port) << "\n";
+-
+-        // Show the line
+-        std::cout << "  Received: " << line << "\n";
+-#endif
+-
+-        // compare received string with the ID
+-        if (strncmp(line,UDP_ID,3)==0)
+-        {
+-#ifdef __UDP_SERVER_VERBOSE__
+-            std::cout << "IDENTIFIED" << std::endl;
+-#endif
+-            std::string initStr(line);
+-            if (SimpleParser::parse(initStr,std::string("init"),trackSensAngle[index],19)==false)
+-            {
+-            	for (int i = 0; i < 19; ++i) {
+-            		trackSensAngle[index][i] = -90 + 10.0*i;
+-                    std::cout << "trackSensAngle[" << i << "] " << trackSensAngle[index][i] << std::endl;
+-				}
+-            }
+-            char line[UDP_MSGLEN];
+-            sprintf(line,"***identified***");
+-            // Sending the car state to the client
+-            if (sendto(listenSocket[index], line, strlen(line) + 1, 0,
+-                       (struct sockaddr *) &clientAddress[index],
+-                       sizeof(clientAddress[index])) < 0)
+-                std::cerr << "Error: cannot send identification message";
+-            identified=true;
+-        }
++    float a__[19] = {-45 ,-19, -12 ,-7 ,-4 ,-2.5 ,-1.7 ,-1 ,-0.5, 0 ,0.5 ,1 ,1.7, 2.5 ,4 ,7 ,12 ,19, 45};
++    for (int i = 0; i < 19; ++i) {
++        trackSensAngle[index][i] = a__[i];
++        // std::cout << "trackSensAngle[" << i << "] " << trackSensAngle[index][i] << std::endl;
+     }
+-
++    
++    
+ 	focusSens[index] = new Sensors(car, 5);//ML
+ 	for (int i = 0; i < 5; ++i) {//ML
+ 		focusSens[index]->setSensor(i,(car->_focusCmd)+i-2.0,200);//ML
+@@ -311,10 +259,7 @@ newrace(int index, tCarElt* car, tSituation *s)
+     trackSens[index] = new Sensors(car, 19);
+     for (int i = 0; i < 19; ++i) {
+     	trackSens[index]->setSensor(i,trackSensAngle[index][i],__SENSORS_RANGE__);
+-#ifdef __UDP_SERVER_VERBOSE__
+-    	std::cout << "Set Track Sensors " << i+1 << " at angle " << trackSensAngle[index][i] << std::endl;
+-#endif
+-	}
++    }
+     // Initialization of opponents sensors
+     oppSens[index] = new ObstacleSensors(36, curTrack, car, s, (int) __SENSORS_RANGE__);
+ 
+@@ -325,7 +270,8 @@ newrace(int index, tCarElt* car, tSituation *s)
+ static void
+ drive(int index, tCarElt* car, tSituation *s)
+ {
+-
++    // printf("%s","123123");
++    
+     total_tics[index]++;
+ 
+ #ifdef __PRINT_RACE_RESULTS__
+@@ -334,7 +280,7 @@ drive(int index, tCarElt* car, tSituation *s)
+     totalTime[index]=car->_timeBehindLeader;
+ #endif
+ 
+-#ifdef __DISABLE_RESTART__
++
+     if (RESTARTING[index]==1)
+     {
+ 
+@@ -343,46 +289,10 @@ drive(int index, tCarElt* car, tSituation *s)
+ 
+         // Set line to all zeroes
+         memset(line, 0x0, 101);
+-        if (recvfrom(listenSocket[index], line, 100, 0,
+-                     (struct sockaddr *) &clientAddress[index],
+-                     &clientAddressLength[index]) < 0)
+-        {
+-            std::cerr << "Error: problem in receiving from the listen socket";
+-            exit(1);
+-        }
+-
+-#ifdef __UDP_SERVER_VERBOSE__
+-        // show the client's IP address
+-        std::cout << "  from " << inet_ntoa(clientAddress[index].sin_addr);
+-
+-        // show the client's port number.
+-        std::cout << ":" << ntohs(clientAddress[index].sin_port) << "\n";
+-
+-        // Show the line
+-        std::cout << "  Received: " << line << "\n";
+-#endif
+-
+-        // compare received string with the ID
+-        if (strncmp(line,UDP_ID,3)==0)
+-        {
+-#ifdef __UDP_SERVER_VERBOSE__
+-            std::cout << "IDENTIFIED" << std::endl;
+-#endif
+-            char line[UDP_MSGLEN];
+-            sprintf(line,"***identified***");
+-            // Sending the car state to the client
+-            if (sendto(listenSocket[index], line, strlen(line) + 1, 0,
+-                       (struct sockaddr *) &clientAddress[index],
+-                       sizeof(clientAddress[index])) < 0)
+-                std::cerr << "Error: cannot send identification message";
+-		RESTARTING[index]=0;
+-        }
+     }
+-#endif
+-
+     // local variables for UDP
+-    struct timeval timeVal;
+-    fd_set readSet;
++    // struct timeval timeVal
++    // fd_set readSet;z
+ 
+     // computing distance to middle
+     float dist_to_middle = 2*car->_trkPos.toMiddle/(car->_trkPos.seg->width);
+@@ -436,7 +346,7 @@ drive(int index, tCarElt* car, tSituation *s)
+ 			focusSensorOut[i] = -1;
+ 		}
+     }
+-
++    
+     // update the value of opponent sensors
+     float oppSensorOut[36];
+     oppSens[index]->sensors_update(s);
+@@ -474,145 +384,71 @@ drive(int index, tCarElt* car, tSituation *s)
+      ****************** Building state string *****************************
+      **********************************************************************/
+ 
+-    string stateString;
+-
+-    stateString =  SimpleParser::stringify("angle", angle);
+-    stateString += SimpleParser::stringify("curLapTime", float(car->_curLapTime));
+-    if (getDamageLimit())
+-	    stateString += SimpleParser::stringify("damage", car->_dammage);
+-    else
+-	    stateString += SimpleParser::stringify("damage", car->_fakeDammage);
+-    stateString += SimpleParser::stringify("distFromStart", car->race.distFromStartLine);
+-    stateString += SimpleParser::stringify("distRaced", distRaced[index]);
+-    stateString += SimpleParser::stringify("fuel", car->_fuel);
+-    stateString += SimpleParser::stringify("gear", car->_gear);
+-    stateString += SimpleParser::stringify("lastLapTime", float(car->_lastLapTime));
+-    stateString += SimpleParser::stringify("opponents", oppSensorOut, 36);
+-    stateString += SimpleParser::stringify("racePos", car->race.pos);
+-    stateString += SimpleParser::stringify("rpm", car->_enginerpm*10);
+-    stateString += SimpleParser::stringify("speedX", float(car->_speed_x  * 3.6));
+-    stateString += SimpleParser::stringify("speedY", float(car->_speed_y  * 3.6));
+-    stateString += SimpleParser::stringify("speedZ", float(car->_speed_z  * 3.6));
+-    stateString += SimpleParser::stringify("track", trackSensorOut, 19);
+-    stateString += SimpleParser::stringify("trackPos", dist_to_middle);
+-    stateString += SimpleParser::stringify("wheelSpinVel", wheelSpinVel, 4);
+-    stateString += SimpleParser::stringify("z", car->_pos_Z  - RtTrackHeightL(&(car->_trkPos)));
+-	stateString += SimpleParser::stringify("focus", focusSensorOut, 5);//ML
+-
+-    char line[UDP_MSGLEN];
+-    sprintf(line,"%s",stateString.c_str());
+-
+-if (RESTARTING[index]==0)
+-{
+-#ifdef __UDP_SERVER_VERBOSE__
+-
+-    std::cout << "Sending: " << line << std::endl;
+-#endif
+-
+-#ifdef __STEP_LIMIT__
++    // string stateString;
++
++    // stateString =  SimpleParser::stringify("angle", angle);
++    // stateString += SimpleParser::stringify("curLapTime", float(car->_curLapTime));
++    // if (getDamageLimit())
++	//     stateString += SimpleParser::stringify("damage", car->_dammage);
++    // else
++	//     stateString += SimpleParser::stringify("damage", car->_fakeDammage);
++    // stateString += SimpleParser::stringify("distFromStart", car->race.distFromStartLine);
++    // stateString += SimpleParser::stringify("distRaced", distRaced[index]);
++    // stateString += SimpleParser::stringify("fuel", car->_fuel);
++    // stateString += SimpleParser::stringify("gear", car->_gear);
++    // stateString += SimpleParser::stringify("lastLapTime", float(car->_lastLapTime));
++    // stateString += SimpleParser::stringify("opponents", oppSensorOut, 36);
++    // stateString += SimpleParser::stringify("racePos", car->race.pos);
++    // stateString += SimpleParser::stringify("rpm", car->_enginerpm*10);
++    // stateString += SimpleParser::stringify("speedX", float(car->_speed_x  * 3.6));
++    // stateString += SimpleParser::stringify("speedY", float(car->_speed_y  * 3.6));
++    // stateString += SimpleParser::stringify("speedZ", float(car->_speed_z  * 3.6));
++    // stateString += SimpleParser::stringify("track", trackSensorOut, 19);
++    // stateString += SimpleParser::stringify("trackPos", dist_to_middle);
++    // stateString += SimpleParser::stringify("wheelSpinVel", wheelSpinVel, 4);
++    // stateString += SimpleParser::stringify("z", car->_pos_Z  - RtTrackHeightL(&(car->_trkPos)));
++	// stateString += SimpleParser::stringify("focus", focusSensorOut, 5);//ML
++    // for(int j = 0 ;j < 19 ; j++){
++    //     printf("aaa   %f  ",trackSensorOut[j]);
++    // }
++    if (is_sim_dqn_main){
++        *is_ready_dqn_main = false;
++        *angle_dqn_main = angle / 3.1416;
++        for(int j = 0 ;j < 19 ; j++)
++            track_dqn_main[j] = trackSensorOut[j] / 200.0;
++        *track_pos_dqn_main = dist_to_middle;
++        *speed_x_dqn_main = car->_speed_x  * 3.6 / 300.0;
++        *speed_y_dqn_main = car->_speed_y  * 3.6 / 300.0;
++        *speed_z_dqn_main = car->_speed_z  * 3.6 / 300.0;
++        for(int j = 0 ;j < 4 ; j++)
++            wheel_dqn_main[j] = wheelSpinVel[j]/100.0;
++        *rpm_dqn_main = car->_enginerpm / 1000;
+     
+-    if (total_tics[index]>__STEP_LIMIT__)
+-    {
+-	RESTARTING[index] = 1;
+-	car->RESTART=1;
+-
+-	char fileName[200];
+-	sprintf(fileName,"%s.txt",trackName);
+-	printf("%s.txt\n",trackName);
+-	FILE *f = fopen (fileName,"a");
+-
+-	printf("Dist_raced %lf\n",distRaced[index]);
+-	fprintf(f,"Dist_raced %lf\n",distRaced[index]);
+-
+-	fclose(f);
+-	return;
++        *is_ready_dqn_main = true;    
++        is_sim_dqn_main = false;
+     }
+-#endif
+-	
+-
+-    // Sending the car state to the client
+-    if (sendto(listenSocket[index], line, strlen(line) + 1, 0,
+-               (struct sockaddr *) &clientAddress[index],
+-               sizeof(clientAddress[index])) < 0)
+-        std::cerr << "Error: cannot send car state";
+-
+-
+-    // Set timeout for client answer
+-    FD_ZERO(&readSet);
+-    FD_SET(listenSocket[index], &readSet);
+-    timeVal.tv_sec = 0;
+-    timeVal.tv_usec = UDP_TIMEOUT;
+-    memset(line, 0x0,1000 );
+-
+-    if (select(listenSocket[index]+1, &readSet, NULL, NULL, &timeVal))
+-    {
+-        // Read the client controller action
+-        memset(line, 0x0,UDP_MSGLEN );  // Zero out the buffer.
+-        int numRead = recv(listenSocket[index], line, UDP_MSGLEN, 0);
+-        if (numRead < 0)
+-        {
+-            std::cerr << "Error, cannot get any response from the client!";
+-			CLOSE(listenSocket[index]);
+-            exit(1);
+-        }
+-
+-#ifdef __UDP_SERVER_VERBOSE__
+-        std::cout << "Received: " << line << std::endl;
+-#endif
+-
+-        std::string lineStr(line);
+-        CarControl carCtrl(lineStr);
+-        if (carCtrl.getMeta()==RACE_RESTART)
+-        {
+-         	RESTARTING[index] = 1;
+-#ifdef __DISABLE_RESTART__
+-	        char line[UDP_MSGLEN];
+-        	sprintf(line,"***restart***");
+-        	// Sending the car state to the client
+-        	if (sendto(listenSocket[index], line, strlen(line) + 1, 0,
+-                	   (struct sockaddr *) &clientAddress[index],
+-                   	sizeof(clientAddress[index])) < 0)
+-            	std::cerr << "Error: cannot send restart message";
+-#else
+-        car->RESTART=1;
+-#endif
+-        }
+-
+-        // Set controls command and store them in variables
+-        oldAccel[index] = car->_accelCmd = carCtrl.getAccel();
+-        oldBrake[index] = car->_brakeCmd = carCtrl.getBrake();
+-        oldGear[index]  = car->_gearCmd  = carCtrl.getGear();
+-        oldSteer[index] = car->_steerCmd = carCtrl.getSteer();
+-        oldClutch[index] = car->_clutchCmd = carCtrl.getClutch();
+-
+-		oldFocus[index] = car->_focusCmd = carCtrl.getFocus();//ML
+-    }
+-    else
+-    {
+-//#ifdef __UDP_SERVER_VERBOSE__
+-        std::cout << "Timeout for client answer\n";
+-//#endif
+-
+-        // If no new controls are availables uses old ones...
+-        car->_accelCmd = oldAccel[index];
+-        car->_brakeCmd = oldBrake[index];
+-        car->_gearCmd  = oldGear[index];
+-        car->_steerCmd = oldSteer[index];
+-        car->_clutchCmd = oldClutch[index];
+-
+-		car->_focusCmd = oldFocus[index];//ML
++    
++    // while(!*is_ready_dqn_main);
++    // sprintf(line,"%s",stateString.c_str());
++
++    //     car->_accelCmd = oldAccel[index];
++    //     car->_brakeCmd = oldBrake[index];
++    //     car->_gearCmd  = oldGear[index];
++    //     car->_steerCmd = oldSteer[index];
++    //     car->_clutchCmd = oldClutch[index];
++
++    // 	car->_focusCmd = oldFocus[index];//ML
++    car->_steerCmd = *psteer_main_write;
++	car->_brakeCmd = *pbrake_main_write;
++	car->_accelCmd =*paccel_main_write;
++	car->_gearCmd = *pgear_main_write ;
++	car->_clutchCmd = *pclutch_main_write;
++	if(*pis_restart_main_write){	
++		car->ctrl.askRestart = true;
++        *pis_restart_main_write = false;
++        *is_ready_dqn_main = false;
+     }
+-}
+-else
+-{
+-        car->_accelCmd = oldAccel[index];
+-        car->_brakeCmd = oldBrake[index];
+-        car->_gearCmd  = oldGear[index];
+-        car->_steerCmd = oldSteer[index];
+-        car->_clutchCmd = oldClutch[index];
+ 
+-		car->_focusCmd = oldFocus[index];//ML
+-}
+ }
+ 
+ /* End of the current race */
+diff --git a/src/interfaces/car.h b/src/interfaces/car.h
+index 5733516..a93a81c 100644
+--- a/src/interfaces/car.h
++++ b/src/interfaces/car.h
+@@ -350,7 +350,7 @@ typedef struct {
+     int		raceCmd;    /**< command issued by the driver */
+     int     focusCmd;//ML Requested focus angle
+     tdble   focusCD;//ML Remaining CoolDown: the point in time when focus sensors can be read again
+-
++    int     askRestart;    /** boolean; 1 = robot asked to restart the race */
+ #define RM_CMD_NONE		0	/**< No race command */
+ #define RM_CMD_PIT_ASKED	1	/**< Race command: Pit asked */
+     char	msg[4][32];     /**< 4 lines of 31 characters 0-1 from car 2-3 from race engine */
+diff --git a/src/libs/raceengineclient/raceengine.cpp b/src/libs/raceengineclient/raceengine.cpp
+index dced7d5..d3b2bf6 100644
+--- a/src/libs/raceengineclient/raceengine.cpp
++++ b/src/libs/raceengineclient/raceengine.cpp
+@@ -39,11 +39,84 @@
+ 
+ #include "raceengine.h"
+ 
++
++#include <iostream>
++#include <cstdio>
++#include <ctime>
+ #define image_width 640
+ #define image_height 480
+-
++#define PI 3.1415926
+ static double	msgDisp;
+ static double	bigMsgDisp;
++//zj
++extern bool* pis_restart_main_write;
++extern double* psteer_main_write;
++extern double* pbrake_main_write;
++extern double* paccel_main_write;
++extern int* pgear_main_write;
++extern double* pclutch_main_write;
++
++extern double* pspeed_x_main_read;
++extern double* pspeed_y_main_read;
++extern double* pspeed_z_main_read;
++extern double* psteer_main_read;
++extern double* pbrake_main_read;
++extern double* paccel_main_read;
++extern int* pgear_main_read;
++extern double* pclutch_main_read;
++extern double* ptrack_angle_main_read;
++extern bool* pis_hit_wall_main_read;
++extern bool* pis_finish_main_read;
++extern double* ptrack_pos_main_read;
++extern double* prpm_main_read;
++extern bool* pis_stuck_main_read;
++
++double* ptrack_radius_main_read;
++bool* pis_ready_main_read;
++
++bool* pis_restart_write=NULL;
++double* psteer_write=NULL;
++double* pbrake_write = NULL;
++double* paccel_write = NULL;
++int* pgear_write = NULL;
++double* pclutch_write = NULL;
++
++double* pspeed_read =NULL;
++double* psteer_read=NULL;
++double* pbrake_read = NULL;
++double* paccel_read = NULL;
++int* pgear_read = NULL;
++double* pclutch_read = NULL;
++double* ptrack_angle_read=NULL;
++bool* pis_finish_read=NULL;
++bool* pis_hit_wall_read=NULL;
++//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++
++extern float* angle_dqn_main;
++extern float* track_dqn_main;
++extern float* track_pos_dqn_main;
++extern float* speed_x_dqn_main;
++extern float* speed_y_dqn_main;
++extern float* speed_z_dqn_main;
++extern float* wheel_dqn_main;
++extern float* rpm_dqn_main;
++extern bool* is_ready_dqn_main;
++extern bool is_sim_dqn_main;
++
++float* angle_dqn_local;
++float* track_dqn_local;
++float* track_pos_dqn_local;
++float* speed_x_dqn_local;
++float* speed_y_dqn_local;
++float* speed_z_dqn_local;
++float* wheel_dqn_local;
++float* rpm_dqn_local;
++bool* is_ready_dqn_local;
++bool is_sim_dqn_local;
++int count=0;
++int stuck_count = 0;
++int out_track_count = 0;
++int low_speed_count = 0;
+ 
+ tRmInfo	*ReInfo = 0;
+ int RESTART = 0;
+@@ -55,6 +128,7 @@ static void ReRaceRules(tCarElt *car);
+ static void
+ ReUpdtPitTime(tCarElt *car)
+ {
++	// *pis_stuck_main_read = false;
+ 	tSituation *s = ReInfo->s;
+ 	tReCarInfo *info = &(ReInfo->_reCarInfo[car->index]);
+ 	int i;
+@@ -362,6 +436,7 @@ ReManage(tCarElt *car)
+ 	car->_distFromStartLine = car->_trkPos.seg->lgfromstart +
+ 	(car->_trkPos.seg->type == TR_STR ? car->_trkPos.toStart : car->_trkPos.toStart * car->_trkPos.seg->radius);
+ 	car->_distRaced = (car->_laps - (info->lapFlag + 1)) * ReInfo->track->length + car->_distFromStartLine;
++
+ }
+ 
+ 
+@@ -637,6 +712,7 @@ ReRaceRules(tCarElt *car)
+ 			GF_TAILQ_INSERT_TAIL(&(car->_penaltyList), penalty, link);
+ 		}
+ 	}
++	
+ }
+ extern int* pwritten;
+ extern uint8_t* pdata;
+@@ -644,43 +720,75 @@ extern int* ppause;
+ extern int* pzmq_flag;
+ extern int* psave_flag;
+ 
+-int count=0;
++
++
+ 
+ 
+ static void
+ ReOneStep(double deltaTimeIncrement)
+ {
+-
++	if(pis_restart_write == NULL){
++		pis_restart_write = pis_restart_main_write;
++		psteer_write = psteer_main_write;
++		pbrake_write = pbrake_main_write;
++		paccel_write = paccel_main_write;
++		pgear_write = pgear_main_write;
++		pclutch_write = pclutch_main_write;
++
++
++		pspeed_read = pspeed_x_main_read;
++		psteer_read = psteer_main_read;
++		pbrake_read = pbrake_main_read;
++		paccel_read = paccel_main_read;
++		pgear_read = pgear_main_read;
++		pclutch_read = pclutch_main_read;
++		ptrack_angle_read = ptrack_angle_main_read;
++		pis_hit_wall_read = pis_hit_wall_main_read;
++		pis_finish_read = pis_finish_main_read;
++		angle_dqn_local = angle_dqn_main;
++		track_dqn_local = track_dqn_main;
++		track_pos_dqn_local = track_pos_dqn_main;
++		speed_x_dqn_local = speed_x_dqn_main;
++		speed_y_dqn_local = speed_y_dqn_main;
++		speed_z_dqn_local = speed_z_dqn_main;
++		wheel_dqn_local = wheel_dqn_main;
++		rpm_dqn_local = rpm_dqn_main;
++		is_ready_dqn_local = is_ready_dqn_main;
++		is_sim_dqn_local = is_sim_dqn_main;
++		// printf("eng: %p\n",(void*)pspeed_read);
++		
++	}
++	int i;
++	tRobotItf *robot;
++	tSituation *s = ReInfo->s;
+ 	if (*ppause == 1) 
+-     { 
+-        count++;
+-        if (count>50) // 10FPS
+-        {
+-           count=1;
+-
+-           glReadPixels(0, 0, image_width, image_height, GL_RGB, GL_UNSIGNED_BYTE, (GLvoid*)pdata);
++	{ 
++		count++;
++		if (count>50) // 10FPS
++		{
++			count=1;
++			
++			glReadPixels(0, 0, image_width, image_height, GL_RGB, GL_UNSIGNED_BYTE, (GLvoid*)pdata);
+ 
+-           *pwritten=1;
++			*pwritten=1;
+ 
+-           double t = GfTimeClock();
+-           if ((t - ReInfo->_reCurTime) > 30*RCM_MAX_DT_SIMU)
+-               ReInfo->_reCurTime = t - RCM_MAX_DT_SIMU;
+-        }       
++			double t = GfTimeClock();
++			if ((t - ReInfo->_reCurTime) > 30*RCM_MAX_DT_SIMU)
++				ReInfo->_reCurTime = t - RCM_MAX_DT_SIMU;
++		}       
+     }
+ 
+-    int i;
+-	tRobotItf *robot;
+-	tSituation *s = ReInfo->s;
+-
+-	if ((ReInfo->_displayMode != RM_DISP_MODE_NONE) && (ReInfo->_displayMode != RM_DISP_MODE_CONSOLE)) {
+-		if (floor(s->currentTime) == -2.0) {
+-			ReRaceBigMsgSet("Ready", 1.0);
+-		} else if (floor(s->currentTime) == -1.0) {
+-			ReRaceBigMsgSet("Set", 1.0);
+-		} else if (floor(s->currentTime) == 0.0) {
+-			ReRaceBigMsgSet("Go", 1.0);
+-		}
+-	}
++ 
++	//zj
++	// if ((ReInfo->_displayMode != RM_DISP_MODE_NONE) && (ReInfo->_displayMode != RM_DISP_MODE_CONSOLE)) {
++	// 	if (floor(s->currentTime) == -2.0) {
++	// 		ReRaceBigMsgSet("Ready", 1.0);
++	// 	} else if (floor(s->currentTime) == -1.0) {
++	// 		ReRaceBigMsgSet("Set", 1.0);
++	// 	} else if (floor(s->currentTime) == 0.0) {
++	// 		ReRaceBigMsgSet("Go", 1.0);
++	// 	}
++	// }
+ 
+ 	ReInfo->_reCurTime += deltaTimeIncrement * ReInfo->_reTimeMult; /* "Real" time */
+ 	s->currentTime += deltaTimeIncrement; /* Simulated time */
+@@ -706,9 +814,84 @@ ReOneStep(double deltaTimeIncrement)
+ 		ReInfo->_reLastTime = s->currentTime;
+ 	}
+ 	STOP_PROFILE("rbDrive*");
++	// std::clock_t start;
++    // double duration;
+ 
++    // start = std::clock();
+ 	START_PROFILE("_reSimItf.update*");
+ 	ReInfo->_reSimItf.update(s, deltaTimeIncrement, -1);
++	// duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
++
++    // std::cout<<"printf: "<< duration <<'\n';
++	//zj
++		is_sim_dqn_main = true;	
++		*pis_ready_main_read = false;
++		tCarElt* car = s->cars[0];
++		*pspeed_x_main_read = car->_speed_x * 3.6;
++		*pspeed_y_main_read = car->_speed_y * 3.6;
++		*pspeed_z_main_read = car->_speed_z * 3.6;
++		*psteer_main_read = car->_steerCmd;
++		*pbrake_main_read = car->_brakeCmd;
++		*paccel_main_read = car->_accelCmd;
++		*pgear_main_read = car->_gearCmd;
++		*pclutch_main_read = car->_clutchCmd;
++		tdble trackangle = RtTrackSideTgAngleL(&(car->_trkPos));
++		tdble angle = trackangle - car->_yaw;
++		NORM_PI_PI(angle);
++		*ptrack_angle_main_read = angle;
++		
++		if (car->priv.simcollision & SEM_COLLISION_XYSCENE) {
++			*pis_hit_wall_main_read = true;
++		}else{
++			*pis_hit_wall_main_read = false;
++		}
++
++		*ptrack_pos_main_read = 2*car->_trkPos.toMiddle/(car->_trkPos.seg->width);
++		*prpm_main_read = car->_enginerpm * 10;
++
++		*ptrack_radius_main_read = car->_trkPos.seg->radius;
++
++		if(car->_laps == s->_totLaps){
++			if(car->_distFromStartLine / ReInfo->track->length > 0.99){
++				*pis_finish_main_read = true;
++				// printf("\n%s\n","finish 99% race");
++			}else{
++				*pis_finish_main_read = false;
++			}
++		}
++		if (car->_speed_x < 0.4){
++			stuck_count++;
++		}else{
++			stuck_count = 0;
++		}
++		if (car->_speed_x > 0.4 && car->_speed_x < 2){
++			out_track_count++;
++		}else{
++			out_track_count = 0;
++		}
++		if (fabs(*ptrack_pos_main_read) > 1){
++			out_track_count++;
++		}else{
++			out_track_count = 0;
++		}
++		// printf("%d:\n",out_track_count);
++		if((*pspeed_x_main_read < 50 
++			&& fabs(*ptrack_pos_main_read) > 1 
++			&& (fabs(angle) >  PI / 8 )
++			&& out_track_count > 500)
++			|| stuck_count > 1500
++			|| out_track_count > 3000){
++				*pis_stuck_main_read = true;
++				//stuck_count = 0;
++				
++		}else{
++			*pis_stuck_main_read = false;
++		}
++
++
++		*pis_ready_main_read = true;
++
++	//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 	for (i = 0; i < s->_ncars; i++) {
+ 		ReManage(s->cars[i]);
+ 	}
+@@ -717,6 +900,28 @@ ReOneStep(double deltaTimeIncrement)
+ 	if ((ReInfo->_displayMode != RM_DISP_MODE_NONE) && (ReInfo->_displayMode != RM_DISP_MODE_CONSOLE)) {
+ 		ReRaceMsgUpdate();
+ 	}
++
++
++	bool restartRequested = false;
++
++	for (i = 0; i < s->_ncars; i++) {
++		if(s->cars[i]->ctrl.askRestart) {
++			restartRequested = true;
++			*pis_stuck_main_read = false;
++				s->cars[i]->ctrl.askRestart = false;
++			}
++		}
++   
++    if(restartRequested){   
++		stuck_count = 0;
++		out_track_count = 0;
++        ReRaceCleanup();
++        ReInfo->_reState = RE_STATE_PRE_RACE;
++        GfuiScreenActivate(ReInfo->_reGameScreen);
++
++    }
++
++
+ 	ReSortCars();
+ }
+ 
+diff --git a/src/libs/raceengineclient/raceinit.cpp b/src/libs/raceengineclient/raceinit.cpp
+index 1c7ee8e..c958493 100644
+--- a/src/libs/raceengineclient/raceinit.cpp
++++ b/src/libs/raceengineclient/raceinit.cpp
+@@ -126,10 +126,13 @@ void ReShutdown(void)
+     }
+ }
+ 
++extern bool* pis_stuck_main_read;
+ 
+ void
+ ReStartNewRace(void * /* dummy */)
+ {
++	*pis_stuck_main_read = false;
++
+ 	ReInitResults();
+ 	ReStateManage();
+ }
+diff --git a/src/libs/raceengineclient/racemain.cpp b/src/libs/raceengineclient/racemain.cpp
+index e31c433..caf3265 100644
+--- a/src/libs/raceengineclient/racemain.cpp
++++ b/src/libs/raceengineclient/racemain.cpp
+@@ -32,7 +32,8 @@
+ #include <exitmenu.h>
+ #include <musicplayer/musicplayer.h>
+ #include <portability.h>
+-
++//
++#include <unistd.h>
+ #include "raceengine.h"
+ #include "raceinit.h"
+ #include "racegl.h"
+@@ -309,7 +310,8 @@ static int reRaceRealStart(void)
+ 
+ 	ReInfo->_reTimeMult = 1.0;
+ 	ReInfo->_reLastTime = -1.0;
+-	ReInfo->s->currentTime = -2.0;
++	//zj
++	ReInfo->s->currentTime = 0.0;
+ 	ReInfo->s->deltaTime = RCM_MAX_DT_SIMU;
+ 
+ 	ReInfo->s->_raceState = RM_RACE_STARTING;
+@@ -559,6 +561,7 @@ int ReRaceStop(void)
+ 
+ int ReRaceEnd(void)
+ {
++	
+ 	int curDrvIdx;
+ 	void *params = ReInfo->params;
+ 	void *results = ReInfo->results;
+@@ -575,7 +578,6 @@ int ReRaceEnd(void)
+ 		GfParmSetNum(results, RE_SECT_CURRENT, RE_ATTR_CUR_DRIVER, NULL, curDrvIdx);
+ 		return RM_SYNC | RM_NEXT_RACE;
+ 	}
+-
+ 	return ReDisplayResults();
+ }
+ 
+diff --git a/src/libs/raceengineclient/raceresults.cpp b/src/libs/raceengineclient/raceresults.cpp
+index d5a521c..75f874f 100644
+--- a/src/libs/raceengineclient/raceresults.cpp
++++ b/src/libs/raceengineclient/raceresults.cpp
+@@ -513,7 +513,10 @@ ReDisplayResults(void)
+ 		if ((!strcmp(GfParmGetStr(params, ReInfo->_reRaceName, RM_ATTR_DISPRES, RM_VAL_YES), RM_VAL_YES)) ||
+ 			(ReInfo->_displayMode == RM_DISP_MODE_NORMAL))
+ 		{
++			
++			
+ 			RmShowResults(ReInfo->_reGameScreen, ReInfo);
++
+ 		} else {
+ 			ReResShowCont();
+ 		}
+diff --git a/src/libs/raceengineclient/racestate.cpp b/src/libs/raceengineclient/racestate.cpp
+index 4d2f254..2806914 100644
+--- a/src/libs/raceengineclient/racestate.cpp
++++ b/src/libs/raceengineclient/racestate.cpp
+@@ -52,12 +52,13 @@ ReStateInit(void *prevMenu)
+ 
+ /* State Automaton Management         */
+ /* Called when a race menu is entered */
++
+ void
+ ReStateManage(void)
+ {
+ 	int mode = RM_SYNC | RM_NEXT_STEP;
+-
+ 	do {
++
+ 		switch (ReInfo->_reState) {
+ 			case RE_STATE_CONFIG:
+ 				GfOut("RaceEngine: state = RE_STATE_CONFIG\n");
+diff --git a/src/linux/main.cpp b/src/linux/main.cpp
+index 4ad5755..97b2f1b 100644
+--- a/src/linux/main.cpp
++++ b/src/linux/main.cpp
+@@ -36,7 +36,7 @@
+ 
+ 
+ extern bool bKeepModules;
+-
++int key;
+ static void
+ init_args(int argc, char **argv, const char **raceconfig)
+ {
+@@ -137,6 +137,11 @@ init_args(int argc, char **argv, const char **raceconfig)
+ 				printf("Please specify a race configuration xml when using -r\n");
+ 				exit(1);
+ 			}
++		} else if(strncmp(argv[i], "--key", 5) == 0){
++			char subbuff[4];
++			memcpy( subbuff, argv[i]+6, 4 );			
++			sscanf(subbuff, "%d", &key);
++			i++;
+ 		} else {
+ 			i++;		/* ignore bad args */
+ 		}
+@@ -146,7 +151,43 @@ init_args(int argc, char **argv, const char **raceconfig)
+ 	GfuiMouseSetHWPresent(); /* allow the hardware cursor (freeglut pb ?) */
+ #endif
+ }
++//zj
++
++struct env_to_read{
++
++	double steer;
++	double brake;
++	double accel;
++	int gear;
++	double clutch;
++
++	double speed_x;
++	double speed_y;
++	double speed_z;	
++	double track_angle;
++	double track_pos;
++	double rpm;
++	double radius;
++};
++struct env_to_read_29{
++	float angle_dqn;
++	float track_dqn[19];
++	float track_pos_dqn;
++	float speed_x_dqn;
++	float speed_y_dqn;
++	float speed_z_dqn;
++	float wheel_dqn[4];
++	float rpm_dqn;
++};
++struct env_to_write{
+ 
++	bool is_restart;
++	double steer;
++	double brake;
++	double accel;
++	int gear;
++	double clutch;
++};
+ struct shared_use_st  
+ {  
+     int written;
+@@ -154,6 +195,16 @@ struct shared_use_st
+     int pause;
+     int zmq_flag;   
+     int save_flag;  
++
++	struct env_to_write env_write;
++	struct env_to_read env_read;
++	bool read_flag;
++	bool is_hit_wall;
++	bool is_finish;
++	bool is_stuck;
++	struct env_to_read_29 env_read_29;
++	bool dqn_ready;
++	
+ };
+ 
+ int* pwritten = NULL;
+@@ -162,8 +213,45 @@ int* ppause = NULL;
+ int* pzmq_flag = NULL;
+ int* psave_flag = NULL;
+ 
+-void *shm = NULL;
++bool* pis_restart_main_write = NULL;
++double* psteer_main_write = NULL;
++double* pbrake_main_write = NULL;
++double* paccel_main_write = NULL;
++int* pgear_main_write = NULL;
++double* pclutch_main_write = NULL;
++
++
++
++double* ptrack_angle_main_read=NULL;
++bool* pis_hit_wall_main_read=NULL;
++bool* pis_finish_main_read=NULL;
++double* pspeed_x_main_read = NULL;
++double* pspeed_y_main_read = NULL;
++double* pspeed_z_main_read = NULL;
++double* psteer_main_read = NULL;
++double* pbrake_main_read = NULL;
++double* paccel_main_read = NULL;
++int* pgear_main_read = NULL;
++double* pclutch_main_read = NULL;
++double* ptrack_pos_main_read = NULL;
++double* prpm_main_read = NULL;
++double* ptrack_radius_main_read = NULL;
++bool* pis_ready_main_read = NULL;
++bool* pis_stuck_main_read = NULL;
+ 
++//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
++float* angle_dqn_main = NULL;
++float* track_dqn_main = NULL;
++float* track_pos_dqn_main = NULL;
++float* speed_x_dqn_main = NULL;
++float* speed_y_dqn_main = NULL;
++float* speed_z_dqn_main = NULL;
++float* wheel_dqn_main = NULL;
++float* rpm_dqn_main = NULL;
++bool* is_ready_dqn_main = NULL;
++bool is_sim_dqn_main = true;
++
++void *shm = NULL;
+ /*
+  * Function
+  *	main
+@@ -183,10 +271,14 @@ void *shm = NULL;
+ int
+ main(int argc, char *argv[])
+ {
++	const char *raceconfig = "";
++	key = 1234;
++	init_args(argc, argv, &raceconfig);
+ 	struct shared_use_st *shared = NULL;
+-    int shmid; 
++	int shmid; 
++	printf("shared key is: %d\n",key);
+     // establish memory sharing 
+-    shmid = shmget((key_t)1234, sizeof(struct shared_use_st), 0666|IPC_CREAT);  
++    shmid = shmget((key_t)key, sizeof(struct shared_use_st), 0666|IPC_CREAT);  
+     if(shmid == -1)  
+     {  
+         fprintf(stderr, "shmget failed\n");  
+@@ -201,22 +293,92 @@ main(int argc, char *argv[])
+     }  
+     printf("\n********** Memory sharing started, attached at %X **********\n \n", shm);  
+     // set up shared memory 
+-    shared = (struct shared_use_st*)shm;  
++    shared = (struct shared_use_st*)shm;
++  
+     shared->written = 0;
+     shared->pause = 0;
+     shared->zmq_flag = 0;  
+     shared->save_flag = 0;
+ 
+- 
++    shared->env_write.is_restart = false;
++ 	shared->env_write.steer = 0;
++	shared->env_write.brake = 0;
++	shared->env_write.accel = 0;
++	shared->env_write.gear = 0;	
++	shared->env_write.clutch = 0;
++
++	shared->env_read.speed_x = 0;
++	shared->env_read.speed_y = 0;
++	shared->env_read.speed_z = 0;
++	shared->env_read.steer = 0;
++	shared->env_read.brake = 0;
++	shared->env_read.accel = 0;
++	shared->env_read.gear = 0;	
++	shared->env_read.clutch = 0;
++	shared->env_read.track_angle = 0;	
++	shared->env_read.track_pos = 0;
++	shared->env_read.rpm = 0;
++	shared->env_read.radius = 0;
++	shared->read_flag = false;
++	shared->is_hit_wall = false;	
++	shared->is_finish = false;
++	shared->is_stuck = false;
++
++	shared->env_read_29.angle_dqn = 0;
++	shared->env_read_29.track_pos_dqn = 0;
++	shared->env_read_29.speed_x_dqn = 0;
++	shared->env_read_29.speed_y_dqn = 0;
++	shared->env_read_29.speed_z_dqn = 0;
++	shared->env_read_29.rpm_dqn = 0;
++	shared->dqn_ready = false;
++	is_sim_dqn_main = true;
++	
+     pwritten=&shared->written;
+     pdata=shared->data;
+     ppause=&shared->pause;
+     pzmq_flag = &shared->zmq_flag;
+-	psave_flag = &shared->save_flag;
++    psave_flag = &shared->save_flag;
++	
++    pis_restart_main_write = &(shared->env_write.is_restart);
++	psteer_main_write = &(shared->env_write.steer);
++	pbrake_main_write = &(shared->env_write.brake);
++	paccel_main_write = &(shared->env_write.accel);
++	pgear_main_write = &(shared->env_write.gear);
++	pclutch_main_write = &(shared->env_write.clutch);
+ 
+-	const char *raceconfig = "";
++	pspeed_x_main_read = &(shared->env_read.speed_x);
++	pspeed_y_main_read = &(shared->env_read.speed_y);
++	pspeed_z_main_read = &(shared->env_read.speed_z);
++	psteer_main_read = &(shared->env_read.steer);
++	pbrake_main_read = &(shared->env_read.brake);
++	paccel_main_read = &(shared->env_read.accel);
++	pgear_main_read = &(shared->env_read.gear);
++	pclutch_main_read = &(shared->env_read.clutch);
++	ptrack_angle_main_read = &(shared->env_read.track_angle);
+ 
+-	init_args(argc, argv, &raceconfig);
++	ptrack_pos_main_read = &(shared->env_read.track_pos);
++	prpm_main_read = &(shared->env_read.rpm);
++	ptrack_radius_main_read = &(shared->env_read.radius);
++	pis_ready_main_read = &(shared->read_flag);
++	pis_hit_wall_main_read =  &(shared->is_hit_wall);	
++	pis_finish_main_read = &(shared->is_finish);
++	pis_stuck_main_read = &(shared->is_stuck);
++
++	angle_dqn_main = &(shared->env_read_29.angle_dqn);
++	track_dqn_main = shared->env_read_29.track_dqn;
++	track_pos_dqn_main = &(shared->env_read_29.track_pos_dqn);
++	speed_x_dqn_main = &(shared->env_read_29.speed_x_dqn);
++	speed_y_dqn_main = &(shared->env_read_29.speed_y_dqn);
++	speed_z_dqn_main = &(shared->env_read_29.speed_z_dqn);
++	wheel_dqn_main = shared->env_read_29.wheel_dqn;
++	rpm_dqn_main = &(shared->env_read_29.rpm_dqn);
++	is_ready_dqn_main = &(shared->dqn_ready);
++
++	printf("pis_restart_main_write:%p",(void*)pis_restart_main_write);
++
++
++	// printf("argv: %d\n",argc);
++	// for (int i = 0; i < )
+ 	LinuxSpecInit();			/* init specific linux functions */
+ 
+ 	if(strlen(raceconfig) == 0) {
