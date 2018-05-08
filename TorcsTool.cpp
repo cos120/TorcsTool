@@ -175,6 +175,7 @@ public:
     uint8_t* getImage(){
         while(flg){
             if(shared->written == 1){
+            //printf("%s\n","123123");
                 shared->written = 0;
                 return shared->data;
             }

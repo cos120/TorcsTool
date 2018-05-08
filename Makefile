@@ -1,9 +1,11 @@
 all: target
 
 cc=g++
-TorcsTool.o: TorcsTool.cpp
-	$(cc) -c -fpic TorcsTool.cpp -o TorcsTool.o
+Torcs_tool.o: TorcsTool.cpp
+	$(cc) -c -fpic TorcsTool.cpp -o Torcs_tool.o
 
-target: TorcsTool.o
-	$(cc) -shared -Wl,-soname,TorcsTool.so  TorcsTool.o -o TorcsTool.so
+target: Torcs_tool.o
+	$(cc) -shared -Wl,-soname,Torcs_tool.so  Torcs_tool.o -o Torcs_tool.so
 
+clean: 
+	rm *.o

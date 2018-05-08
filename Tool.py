@@ -15,9 +15,8 @@ import scipy.misc
 import scipy
 import math
 import matplotlib.pyplot as plt
-print(__file__)
 dir_path = os.path.dirname(os.path.realpath(__file__))
-lib = cdll.LoadLibrary(dir_path + '/TorcsTool.so')
+lib = cdll.LoadLibrary('{}/Torcs_tool.so'.format(dir_path))
 STUCK_ANGLE = 0.8
 
 def clip(lo, x, hi):
@@ -37,7 +36,7 @@ def clip(lo, x, hi):
         return x
 
 
-class Tool(object):
+class torcs_tool(object):
     class _29data(Structure):
         _fields_ = [
             ("angle",
@@ -310,7 +309,7 @@ class Tool(object):
 
 if __name__ == '__main__':
     import pprint
-    s = Tool(grab_shot=True)
+    s = torcs_tool(grab_shot=True)
     i = 0
     while True:
         # all 29 datas from scr_server
