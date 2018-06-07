@@ -1,8 +1,8 @@
 # Welcome to TorcsTool
 
-TorcsTool is a torcs client for reinforcement learning like [gym_torcs](https://github.com/ugo-nama-kun/gym_torcs). The client developed by udp has some delay when I grab images from Torcs, so TorcsTool develped by shared memory.
+TorcsTool is a torcs client for reinforcement learning like [gym_torcs](https://github.com/ugo-nama-kun/gym_torcs). The client developed by udp has some delay when I grab images from Torcs, so TorcsTool develped by shared memory to boost image grab. I modify `scr_server` in drivers.  
 
-**This repo is for [torcs-1.3.7](http://sourceforge.net/projects/torcs/files/all-in-one/1.3.7/torcs-1.3.7.tar.bz2/download).**
+**This repo is for [torcs-1.3.7](https://github.com/fmirus/torcs-1.3.7).**
 
  ## Getting Started
 
