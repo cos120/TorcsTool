@@ -4,15 +4,18 @@ file: torcs_env.py
 time: 17-8-1
 """
 import time
-
+import copy
 import scipy
-
-#from Tool import torcs_tool
-#import Tool
+from . import Tool
+from .constant import *
 import math
 import os
 import numpy as np
-
+import subprocess
+from itertools import count
+from easydict import EasyDict as ed
+from glob import glob
+import random
 # from keras.models import load_model
 SPEED_X = -8
 SPEED_Y = 1
@@ -37,60 +40,45 @@ def clip(lo, x, hi):
     :return: x -> [lo , hi]
     """
     return lo if x <= lo else hi if x >= hi else x
+class TorcsEnv:
+    terminal_judge_start = 100  # If after 100 timestep still no progress, terminated
+    termination_limit_progress = 5  #
+    def __init__(self,torcs_path,grab_img = True,memory_key = None):
 
-
-class Env:
-    def __init__(self, torcs_tool):
-        self.tool = torcs_tool
-        self.step_count = 0
-        # os.system('torcs&')
-        # time.sleep( 1 )
-        # os.system( 'sh autoChangeTrack.sh practice' )
+        assert memory_key, 'you must specific shared memory key'
+        torcs_path = '/home/bst2017/zj/software/bin/bin'
+        rel = '/home/bst2017/zj/software/torcs-1.3.7/data'
+        self.track_category_name = track_category_name
+        self.all_track_name = all_track_names
+        os.system('ipcrm -M {}'.format(memory_key))
+        command = '{}/torcs --key {}'.format(torcs_path, memory_key)
+        self.torcs_proc = subprocess.Popen([command], shell=True, preexec_fn=os.setsid)
+        time.sleep(1)
+        self.tool = Tool.torcs_tool(grab_shot=grab_img ,key=memory_key)
+        time.sleep(0.5)
+        #os.system('sh /home/bst2017/zj/projects/back_up_ddpg/autostart.sh')
+        time.sleep(0.5)
+        self.time_step = 0
         self.begin_protection = 0
-        self.control = {
-            0: [type(self.tool).__dict__['steer'], 0.05],
-            1: [type(self.tool).__dict__['steer'], -1],
-            2: [type(self.tool).__dict__['steer'], 1],
-            3: [type(self.tool).__dict__['accel'], 0.05],
-            4: [type(self.tool).__dict__['accel'], 1],
-            5: [type(self.tool).__dict__['brake'], 0.05],
-            6: [type(self.tool).__dict__['brake'], 0.2]
-        }
-        # self.model = load_model("/home/zj/PycharmProjects/py3/self-driving/nvidia/final.h5")
+        self.norm_factory = self.norm()
 
-    def reset(self):
-        self.tool.restart()
-        self.begin_protection = 0
-        self.step_count = 0
-
-    def steerControl(self, steer):
-        # axis 0 left = -1 right = 1
-        # axis 1 up = -1 down = 1
-        axis_steer = steer
-        if (math.fabs(axis_steer) > 0.8):  # steer
-            ratio = 0.1
-        else:
-            ratio = 0.2
-        self.tool.steer = clip(-1, self.tool.track_angle /
-                               scipy.pi - ratio * axis_steer, 1)
-
-    def reward(self, S, is_stuck):
-        S = S[0]
-        speed = S[SPEED_X] * 300
-        angle = S[TRACK_ANGLE] * 3.1416
-        track_pos = S[TRACK_POS]
-        reward = speed * np.cos(angle) - np.abs(speed *
-                                                np.sin(angle)) - speed * np.abs(track_pos)
-        if is_stuck:
-            reward = -200
-        elif self.tool.is_hit_wall:
-            reward = -10
-        elif speed < 2:
-            reward = - np.abs(track_pos)
-        return reward
-
-    def changeTrack(self):
-        os.system('sh autoChangeTrack.sh change')
+    def norm(self):
+        norm = ed()
+        norm.focus = 200.
+        norm.speedX = 300.0
+        norm.speedY = 300.0
+        norm.speedZ = 300.0
+        norm.angle = 3.1416
+        norm.damage  = None
+        norm.opponents = 200.
+        norm.rpm = 10000.
+        norm.track = 200.
+        norm.trackPos = None
+        norm.wheelSpinVel = None
+        norm.radius = None
+        norm.toleft = None
+        norm.toright = None
+        return norm
 
     def auto_shift(self):
         if 0 <= self.tool.speed < 40:
@@ -106,55 +94,84 @@ class Env:
         elif 200 < self.tool.speed:
             self.tool.gear = 6
 
-    def step_one_action(self, planning, action):
+    def make_obs(self,obs):
+        for k,v in self.norm_factory.items():
+            setattr(obs,k,obs[k] / v if v else obs[k])
+        # INFO
+        # uncomment to scale angle to (0,1)
+        #obs.angle = obs.angle / 2. + 0.5
+        return obs
 
-        # for plan ,ac in zip(planning,action):
-        action = float(action)
-        # print("planning: {}  action:{}".format(planning,action))
+    def change_track(self,index = None,category = None):
+        if index:
+            track = self.all_track_name[index % len(self.all_track_name)]
+        else:
+            track = random.choice(self.all_track_name)
+        self.tool.changeTrack(track.encode('utf-8'))
+        self.tool.changeTrackOk('1'.encode('utf-8'))
+        return track
+        #self.tool.changeTrack('tracks/dirt/dirt-1/dirt-1.xml'.encode('utf-8'))
 
-        control = self.control[planning]
-        control[0].fset(self.tool, control[1] * 0.5)
+    #def change_track_ok(self):
+    #    self.tool.changeTrackOk('1'.encode('utf-8'))
+
+    def make_obs_origin(self):
+        obs = ed()
+        t = self.tool.get29Data
+        for k,v in self.norm_factory.items():
+            setattr(obs,k,t[k])
+        return obs
+    def restart(self):
+        #self.change_track()
+        self.tool.changeTrackOk('0'.encode('utf-8'))
+        self.tool.restart()
+        self.time_step = 0
+        return self.make_obs_origin()
+
+    def reset(self):
+        origin = self.restart()
+        return self.make_obs(origin)
+
+    def step(self,actions):
+        self.tool.steer, self.tool.accel ,self.tool.brake = actions
         self.auto_shift()
-        S = self.tool.get29Data
         is_stuck = self.tool.is_stuck
         is_finish = self.tool.is_finish
 
-        self.step_count += 1
-        _reward = self.reward(S, is_stuck)
+        self.time_step += 1
+        obs = self.make_obs_origin()
+        obs_pre = copy.deepcopy(obs)
+        done = False
+        track = obs['track']
+        trackPos = obs['trackPos']
+        sp = obs['speedX']
+        damage = obs['damage']
+        rpm = obs['rpm']
+        progress = sp * np.cos(obs['angle']) - np.abs(sp * np.sin(obs['angle'])) - sp * np.abs(obs['trackPos'])
+        reward = progress
 
-        done = (is_stuck or is_finish) and self.begin_protection > 10
+        # collision detection
+        if obs['damage'] - obs_pre['damage'] > 0:
+            reward = -1
+        if (abs(track.any()) > 1 or abs(trackPos) > 1):  # Episode is terminated if the car is out of track
+            reward = -200
+            done = True
+
+        if self.terminal_judge_start < self.time_step: # Episode terminates if the progress of agent is small
+           if progress < self.termination_limit_progress:
+               print("No progress")
+               done = True
+
+        if np.cos(obs['angle']) < 0: # Episode is terminated if the agent runs backward
+            done = True
+        #done = (is_stuck or is_finish) and self.begin_protection > 10
         self.begin_protection += 1
+        if is_finish:
+            done = True
+        #if self.begin_protection < 100:
+        #    done = False
+        return self.make_obs(obs), reward, done, {}
 
-        return S, _reward, done, is_stuck
+if __name__ == '__main__':
+    env = TorcsEnv(None,memory_key=1234)
 
-    def step(self, action):
-        action = np.squeeze(action)
-
-        self.tool.steer = action[0]
-        self.tool.accel = action[1]
-        self.tool.brake = action[2]
-        # self.tool.gear = action['gear']
-
-        self.auto_shift()
-        # time.sleep(5e-5)
-        # image = self.tool.image
-        S = self.tool.get29Data
-        is_stuck = self.tool.is_stuck
-        is_finish = self.tool.is_finish
-
-        # S = {
-        #     # 'image': image,
-        #     'angle': angle,
-        #     'speed': speed}
-
-        self.step_count += 1
-        _reward = self.reward(S, is_stuck)
-        # if self.step_count > 500 and _reward < 5:
-        #     self.step_count = 0
-        #     done = True
-        #     return S , _reward , done
-        done = (is_stuck or is_finish) and self.begin_protection > 10
-        self.begin_protection += 1
-        # print("stuck: {} finish: {} "
-        #       "pos: {} angle: {}".format(is_stuck, is_finish , S[TRACK_POS],S[TRACK_ANGLE]))
-        return S, _reward, done, is_stuck

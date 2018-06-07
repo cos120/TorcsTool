@@ -1,0 +1,4463 @@
+From b3808319b2e686dab07fb63fec0920425117c0d9 Mon Sep 17 00:00:00 2001
+From: zj <1023086844@qq.com>
+Date: Mon, 4 Jun 2018 09:57:05 +0800
+Subject: [PATCH 2/3] before change TorcsTool
+
+---
+ Make-config                                   |   5 +-
+ Make-default.mk                               |  10 +-
+ custom/custom_include/CarControl.h            | 100 +++++
+ custom/custom_include/ObstacleSensors.h       |  76 ++++
+ custom/custom_include/SimpleParser.h          |  43 ++
+ custom/custom_include/get_sensors.h           | 131 ++++++
+ custom/custom_include/sensors.h               |  74 ++++
+ custom/custom_source/CarControl.cpp           | 167 ++++++++
+ custom/custom_source/ObstacleSensors.cpp      | 194 +++++++++
+ custom/custom_source/SimpleParser.cpp         | 128 ++++++
+ custom/custom_source/get_sensors.cpp          | 164 ++++++++
+ custom/custom_source/sensors.cpp              | 550 ++++++++++++++++++++++++++
+ src/drivers/berniw/.depend                    |  86 ----
+ src/drivers/berniw/berniw.cpp                 |   2 +-
+ src/libs/raceengineclient/.depend             | 491 ++++++++++++++++++++++-
+ src/libs/raceengineclient/CarControl.cpp      | 167 ++++++++
+ src/libs/raceengineclient/CarControl.h        | 100 +++++
+ src/libs/raceengineclient/Makefile            |   5 +-
+ src/libs/raceengineclient/ObstacleSensors.cpp | 194 +++++++++
+ src/libs/raceengineclient/ObstacleSensors.h   |  76 ++++
+ src/libs/raceengineclient/SimpleParser.cpp    | 128 ++++++
+ src/libs/raceengineclient/SimpleParser.h      |  43 ++
+ src/libs/raceengineclient/get_sensors.cpp     | 164 ++++++++
+ src/libs/raceengineclient/get_sensors.h       | 276 +++++++++++++
+ src/libs/raceengineclient/raceengine.cpp      |  10 +-
+ src/libs/raceengineclient/sensors.cpp         | 550 ++++++++++++++++++++++++++
+ src/libs/raceengineclient/sensors.h           |  74 ++++
+ src/libs/racescreens/.depend                  |  62 ++-
+ src/libs/racescreens/driverselect.cpp         |   6 +-
+ src/linux/torcs-bin                           | Bin 74826 -> 74826 bytes
+ 30 files changed, 3974 insertions(+), 102 deletions(-)
+ create mode 100644 custom/custom_include/CarControl.h
+ create mode 100644 custom/custom_include/ObstacleSensors.h
+ create mode 100644 custom/custom_include/SimpleParser.h
+ create mode 100644 custom/custom_include/get_sensors.h
+ create mode 100644 custom/custom_include/sensors.h
+ create mode 100644 custom/custom_source/CarControl.cpp
+ create mode 100644 custom/custom_source/ObstacleSensors.cpp
+ create mode 100644 custom/custom_source/SimpleParser.cpp
+ create mode 100644 custom/custom_source/get_sensors.cpp
+ create mode 100644 custom/custom_source/sensors.cpp
+ create mode 100644 src/libs/raceengineclient/CarControl.cpp
+ create mode 100644 src/libs/raceengineclient/CarControl.h
+ create mode 100644 src/libs/raceengineclient/ObstacleSensors.cpp
+ create mode 100644 src/libs/raceengineclient/ObstacleSensors.h
+ create mode 100644 src/libs/raceengineclient/SimpleParser.cpp
+ create mode 100644 src/libs/raceengineclient/SimpleParser.h
+ create mode 100644 src/libs/raceengineclient/get_sensors.cpp
+ create mode 100644 src/libs/raceengineclient/get_sensors.h
+ create mode 100644 src/libs/raceengineclient/sensors.cpp
+ create mode 100644 src/libs/raceengineclient/sensors.h
+
+diff --git a/Make-config b/Make-config
+index c9fc502..cdf1604 100644
+--- a/Make-config
++++ b/Make-config
+@@ -39,7 +39,8 @@ LD = ld
+ AR = ar
+ ARFLAGS = ruv
+ RANLIB = ranlib
+-
++#CUSTOM_TORCS_INC = ${TORCS_BASE}/custom/custom_include
++#CUSTOM_TORCS_LIB = ${TORCS_BASE}/custom/custom_lib
+ INSTALL = /usr/bin/install -c
+ #INSTALL_PROGRAM = /usr/bin/install -c -m 755
+ #INSTALL_DATA = /usr/bin/install -c -m 644
+@@ -58,7 +59,7 @@ EXT_LIBS = -lplibjs -lplibssgaux -lplibssg -lplibsm -lplibsl -lplibsg -lplibul -
+ LDFLAGS =  -L${EXPORTBASE}/lib  -lopenal -lalut -lvorbisfile -L/usr/lib
+ 
+ #INCFLAGS =  -I${EXPORTBASE}/include -I/usr/include -I/usr/local/include
+-INCFLAGS =  -I${EXPORTBASE}/include -I${TORCS_BASE}
++INCFLAGS =  -I${EXPORTBASE}/include -I${TORCS_BASE} -I/${CUSTOM_TORCS_INC}
+ 
+ CPP = gcc -E  -M -D__DEPEND__
+ 
+diff --git a/Make-default.mk b/Make-default.mk
+index c295181..41648f5 100644
+--- a/Make-default.mk
++++ b/Make-default.mk
+@@ -99,7 +99,9 @@ endef
+ 
+ 
+ OB1 = $(SOURCES:.cpp=.o)
+-OBJECTS = $(OB1:.c=.o)
++OB2 = $(CUSTOMSRC:.cpp=.o)
++OBJECTS := $(OB1:.c=.o) $(OB2:.c=.o)
++#OBJECTS = $(OB1:.c=.o)
+ 
+ define recursedirs
+ for Dir in $$RecurseDirs ;\
+@@ -237,7 +239,7 @@ specfiles: installspecfiles specfilesdirs
+ .SUFFIXES: .cpp
+ 
+ .cpp.o:
+-	${CXX} $(INCFLAGS) $(CXXFLAGS) $(COMPILFLAGS) -c $<
++	${CXX} $(INCFLAGS) $(CXXFLAGS) $(COMPILFLAGS) $(CUSTOM_SRC) -c $<
+ 
+ .SUFFIXES: .c
+ 
+@@ -477,7 +479,10 @@ endif
+ 
+ ifdef SOLIBRARY
+ 
++$(warning  $(OBJECTS))
+ ${SOLIBRARY}: ${OBJECTS}
++	$(warning  "123")
++	$(warning  $(OBJECTS))
+ 	${CXX} -shared -o ${SOLIBRARY} ${OBJECTS} ${SOLIBS} ${LDFLAGS} ${LIBSPATH} ${LIBS} ${DEBUG_LIBS}
+ 	@D=`pwd` ; \
+ 	createdir="${EXPORTBASE}/lib" ; \
+@@ -509,6 +514,7 @@ endif
+ ifdef MODULE
+ 
+ ${MODULE}: ${OBJECTS}
++	$(warning  "123123213")
+ 	${CXX} -shared -o ${MODULE} ${OBJECTS} ${LDFLAGS} ${LIBSPATH} ${LIBS} 
+ 	@D=`pwd` ; \
+ 	createdir="${EXPORTBASE}/${MODULEDIR}" ; \
+diff --git a/custom/custom_include/CarControl.h b/custom/custom_include/CarControl.h
+new file mode 100644
+index 0000000..aff086a
+--- /dev/null
++++ b/custom/custom_include/CarControl.h
+@@ -0,0 +1,100 @@
++/***************************************************************************
++ 
++    file                 : CarControl.h
++    copyright            : (C) 2007 Daniele Loiacono
++ 
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++#ifndef CARCONTROL_H_
++#define CARCONTROL_H_
++
++#include <iostream>
++#include <sstream>
++#include <cstring>
++#include <cassert>
++#include "SimpleParser.h"
++
++using namespace std;
++
++class CarControl
++{
++private:
++
++        // Accelerate command [0,1]
++        float accel;
++
++        // Brake command [
++        float brake;
++
++        // Gear command
++        int gear;
++        
++        // Steering command [-1,1]
++        float steer;
++        
++        // Clutch command [0,1]
++        float clutch;
++
++        // meta-command
++        int meta;
++
++  		// focus command [-90,90], i.e. angle of track sensor focus desired by client
++		int focus;
++
++public:
++
++        CarControl(){};
++
++        CarControl(string sensors);
++
++        CarControl(float accel, float brake, int gear, float steer, float clutch, int focus, int meta);
++        CarControl(float accel, float brake, int gear, float steer, float clutch, int focus);
++
++        string toString();
++
++        void fromString(string sensors);
++
++        /* Getter and setter methods */
++
++        float getAccel() const;
++        
++        void setAccel (float accel);
++        
++        float getBrake() const;
++        
++        void setBrake (float brake);
++        
++        int getGear() const;
++        
++        void setGear(int gear);
++        
++        float getSteer() const;
++        
++        void setSteer(float steer);  
++        
++        int getMeta() const;
++        
++        void setMeta(int gear);
++
++        float getClutch() const;
++
++        void setClutch(float clutch);
++
++		int getFocus();
++
++		void setFocus(int focus);
++
++        // meta-command value for race restart
++        static int META_RESTART;
++
++};
++
++#endif /*CARCONTROL_H_*/
+diff --git a/custom/custom_include/ObstacleSensors.h b/custom/custom_include/ObstacleSensors.h
+new file mode 100644
+index 0000000..3625b94
+--- /dev/null
++++ b/custom/custom_include/ObstacleSensors.h
+@@ -0,0 +1,76 @@
++/***************************************************************************
++ 
++    file                 : ObstacleSensors.h
++    copyright            : (C) 2008 Lugi Cardamone, Daniele Loiacono, Matteo Verzola
++						   (C) 2013 Wolf-Dieter Beelitz
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++
++#ifndef _SENSOBST_H_
++#define _SENSOBST_H_
++
++#include <stdio.h>
++#include <math.h>
++#include <car.h>
++#include <robottools.h>
++#include <raceman.h>
++
++class Obstacle
++{
++	public:
++		double dist_vert;
++		double dist_horiz;
++		double dist;
++};
++
++class SingleObstacleSensor {
++	public:
++		void init(CarElt *car,double start_angle, double angle_covered,double range) ;
++
++		void setSingleObstacleSensor(double sens_value);
++		inline double getSingleObstacleSensorOut() { return sensor_out; }
++		inline double getSingleObstacleSensorAngleStart() { return sensor_angle_start; }
++
++	protected:
++		
++
++		double sensor_range; //meters
++		double sensor_angle_start; 
++		double sensor_angle_covered;
++		double sensor_out;   //if = RANGE then no obstacle in range, else equals the distance from the obstacle in that direction
++
++		tCarElt *car;
++};
++
++class ObstacleSensors {
++	public:
++		ObstacleSensors(int sensors_number, tTrack* track, tCarElt* car, tSituation *situation, int range );
++		~ObstacleSensors();
++
++		double getObstacleSensorOut(int sensor_id);
++
++		void sensors_update(tSituation *situation);
++
++	protected:
++		SingleObstacleSensor *sensors;
++		int sensors_num;
++		Obstacle* obstacles_in_range;    //info on opponents to sense
++		Obstacle* all_obstacles;	//info on ALL opponents, no matter what their position is!
++        tCarElt* myc;
++		int sensorsRange;
++		double anglePerSensor;
++
++	private:
++		void printSensors();
++};
++
++
++#endif
+diff --git a/custom/custom_include/SimpleParser.h b/custom/custom_include/SimpleParser.h
+new file mode 100644
+index 0000000..4ed47b6
+--- /dev/null
++++ b/custom/custom_include/SimpleParser.h
+@@ -0,0 +1,43 @@
++/***************************************************************************
++ 
++    file                 : SimpleParser.h
++    copyright            : (C) 2007 Daniele Loiacono
++ 
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++#ifndef SIMPLEPARSER_H_
++#define SIMPLEPARSER_H_
++
++#include <iostream>
++#include <sstream>
++#include <cstring>
++
++using namespace std;
++
++
++class SimpleParser
++{
++public:
++        static bool  parse(string sensors, string tag, float &value);
++
++        static bool  parse(string sensors, string tag, int &value);
++
++        static bool  parse(string sensors, string tag, float *value, int size);
++
++        static string stringify(string tag, float value);
++
++        static string  stringify(string tag, int value);
++
++        static string  stringify(string tag, float *value, int size);
++
++};
++
++#endif /*SIMPLEPARSER_H_*/
+diff --git a/custom/custom_include/get_sensors.h b/custom/custom_include/get_sensors.h
+new file mode 100644
+index 0000000..43a43ed
+--- /dev/null
++++ b/custom/custom_include/get_sensors.h
+@@ -0,0 +1,131 @@
++/***************************************************************************
++
++    file                 : scr_server.cpp
++    copyright            : (C) 2007 Daniele Loiacono
++
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++
++#ifndef GET_SENSORS_H_
++#define GET_SENSORS_H_
++#ifdef _WIN32
++#include <windows.h>
++#endif
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <math.h>
++#include <iostream>
++#include <sstream>
++#include <ctime>
++
++#include <tgf.h>
++#include <track.h>
++#include <car.h>
++#include <raceman.h>
++#include <robottools.h>
++#include <robot.h>
++#include <sensors.h>
++#include <SimpleParser.h>
++#include <CarControl.h>
++#include <ObstacleSensors.h>
++
++#define NBBOTS 10
++
++#define RACE_RESTART 1
++//#define __STEP_LIMIT__ 10000
++//#define __DISABLE_RESTART__
++//#define __PRINT_RACE_RESULTS__
++
++#define __FOCUS_RANGE__ 200
++
++/*** Noise definitions ***/
++#define __NOISE_STD__ 0.1
++#define __OPP_NOISE_STD__ 0.02
++#define __FOCUS_NOISE_STD__ 0.01
++
++#ifdef __PRINT_RACE_RESULTS__
++static tdble bestLap[NBBOTS];
++static tdble damages[NBBOTS];
++static tdble totalTime[NBBOTS];
++static int position[NBBOTS];
++static int curPosition=0;
++static int bonusBest;
++static int bonusDamage;
++static char *trackName;
++#endif
++
++extern float* angle_dqn_main;
++extern float* track_dqn_main;
++extern float* opponents_main;
++extern float* focus_main;
++extern float* track_pos_dqn_main;
++extern float* speed_x_dqn_main;
++extern float* speed_y_dqn_main;
++extern float* speed_z_dqn_main;
++extern float* wheel_dqn_main;
++extern float* rpm_dqn_main;
++extern float* damage_main;
++extern float* curLapTime_main;
++extern float* lastLapTime_main;
++extern float* distFromStart_main;
++extern float* distRaced_main;
++extern float* fuel_main;
++extern int* racePos_main;
++extern int* gear_main;
++extern float* z_main;
++
++extern bool* pis_restart_main_write;
++extern double* psteer_main_write;
++extern double* pbrake_main_write;
++extern double* paccel_main_write;
++extern int* pgear_main_write;
++extern double* pclutch_main_write;
++extern bool* is_ready_dqn_main;
++extern bool is_sim_dqn_main;
++
++class get_sensor{
++    private:
++        double __SENSORS_RANGE__;
++        Sensors *trackSens;
++        ObstacleSensors *oppSens;
++        Sensors *focusSens;//ML
++        float trackSensAngle[19];
++        tdble prevDist;
++        tdble distRaced;
++        tTrack	*curTrack;
++        float dist_to_middle;
++        float angle;
++        tCarElt* curCar;
++        tSituation *curS;
++
++        double normRand(double avg,double std){
++        	 double x1, x2, w, y1, y2;
++        
++        	    do {
++        	            x1 = 2.0 * rand()/(double(RAND_MAX)) - 1.0;
++        	            x2 = 2.0 * rand()/(double(RAND_MAX)) - 1.0;
++        	            w = x1 * x1 + x2 * x2;
++        	    } while ( w >= 1.0 );
++        
++        	    w = sqrt( (-2.0 * log( w ) ) / w );
++        	    y1 = x1 * w;
++        	    y2 = x2 * w;
++        	    return y1*std + avg;
++        }
++
++    public:
++        get_sensor(tTrack* track,  tCarElt* car, tSituation *s);
++
++        void set_sensor();
++};
++#endif
+diff --git a/custom/custom_include/sensors.h b/custom/custom_include/sensors.h
+new file mode 100644
+index 0000000..5d8a180
+--- /dev/null
++++ b/custom/custom_include/sensors.h
+@@ -0,0 +1,74 @@
++/***************************************************************************
++ 
++    file                 : sensors.h
++    copyright            : (C) 2007 Alessandro Prete
++ 
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *  
++ ***************************************************************************/ 
++#ifndef _SENSORS_H_
++#define _SENSORS_H_
++
++#include <stdio.h>
++#include <math.h>
++#include <car.h>
++#include <robottools.h>
++#include <raceman.h>
++
++class SingleSensor {
++	public:
++		inline void init(CarElt *car) { this->car = car; }
++
++		void setSingleSensor(float angle, float range);
++		inline float getSingleSensorOut() { return sensor_out; }
++		void update();
++
++	protected:
++		float sensor_calc_str(tTrackSeg *seg, float x, float y, float sensor_angle, float remaining_range);
++		float sensor_calc_lft_rgt(tTrackSeg *seg, float x, float y, float sensor_angle, float remaining_range);
++		
++		bool check_max_circle_intersect(float angle, float radius_max, float radius_x, float y_dn, float y_up, float remaining_range, float &dist_returned);
++		bool check_min_circle_intersect(float angle, float radius_min, float radius_x, float y_dn, float y_up, float remaining_range, float &dist_returned);
++		bool check_up_border_intersect(float angle, float radius_min, float radius_x, float y_up, float remaining_range, float &dist_returned, float &angle_returned, float &x_returned);
++		bool check_down_border_intersect(float angle, float radius_min, float radius_x, float y_dn, float remaining_range, float &dist_returned, float &angle_returned, float &x_returned);
++
++		float sensor_range; //meters
++		float sensor_angle; //radians
++		float sensor_out;	//meters
++
++		tCarElt *car;
++};
++
++class Sensors {
++	public:
++		Sensors(tCarElt *car, int sensors_number);
++		~Sensors();
++
++		//Params:
++		//			id from 0 to sensors_number-1
++		//			angle in degree, positive for left angle, negative for right angle
++		//			range in meters
++		void setSensor(int sensor_id, float angle, float range);
++
++		//Return Value:
++		//				sensor range if no boarder detected in the range
++		//				border distance if boarder detected
++		//note:	if the car reach the border the value is 0.
++		//		if the car go behind the track border the value in < 0, don't consider it!
++		float getSensorOut(int sensor_id);
++
++		void sensors_update();
++
++	protected:
++		SingleSensor *sensor;
++		int sensors_num;
++};
++
++#endif
+diff --git a/custom/custom_source/CarControl.cpp b/custom/custom_source/CarControl.cpp
+new file mode 100644
+index 0000000..5681827
+--- /dev/null
++++ b/custom/custom_source/CarControl.cpp
+@@ -0,0 +1,167 @@
++/***************************************************************************
++ 
++    file                 : CarControl.cpp
++    copyright            : (C) 2007 Daniele Loiacono
++ 
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++#include "CarControl.h"
++
++// meta-command value for race restart
++int CarControl::META_RESTART=1;
++
++CarControl::CarControl(float accel, float brake, int gear, float steer, float clutch, int focus, int meta)
++{
++	this->accel = accel;
++	this->brake = brake;
++	this->gear  = gear;
++	this->steer = steer;
++	this->clutch = clutch;
++	this->focus = focus;
++	this->meta = meta;
++}
++
++CarControl::CarControl(float accel, float brake, int gear, float steer, float clutch, int focus)
++{
++	this->accel = accel;
++	this->brake = brake;
++	this->gear  = gear;
++	this->steer = steer;
++	this->clutch = clutch;
++	this->focus = focus;
++	this->meta = 0;
++}
++
++CarControl::CarControl(string sensors)
++{
++        fromString(sensors);
++}
++
++string 
++CarControl::toString()
++{
++	string str;
++	
++	str  = SimpleParser::stringify("accel", accel);
++	str += SimpleParser::stringify("brake", brake);
++	str += SimpleParser::stringify("gear",  gear);
++	str += SimpleParser::stringify("steer", steer);
++	str += SimpleParser::stringify("clutch", clutch);
++	str += SimpleParser::stringify("focus",  focus);
++	str += SimpleParser::stringify("meta", meta);
++	
++	return str;	
++}
++
++void 
++CarControl::fromString(string sensors)
++{
++	if (SimpleParser::parse(sensors, "accel", accel)==false)
++		accel=0.0;
++	if (SimpleParser::parse(sensors, "brake", brake)==false)
++		brake=0.0;
++	if (SimpleParser::parse(sensors, "gear",  gear)==false)
++		gear=1;
++	if (SimpleParser::parse(sensors, "steer", steer)==false)
++		steer=0.0;
++	if (SimpleParser::parse(sensors, "clutch", clutch)==false)
++			clutch=0.0;
++	if (SimpleParser::parse(sensors, "meta", meta)==false)
++		meta=0;
++	if (SimpleParser::parse(sensors, "focus", focus)==false) //ML
++		focus=0; //ML
++	if (focus < -90 || focus > 90)//ML What to do with focus requests out of allowed range?
++		focus=360;//ML A value of 360 is used for not requesting focus readings; -1 is returned as focus reading to the client
++}
++
++float 
++CarControl::getAccel() const
++{
++        return this->accel;
++};
++
++void 
++CarControl::setAccel (float accel)
++{
++        this->accel = accel;
++};
++
++float 
++CarControl::getBrake() const
++{
++        return this->brake;
++};
++
++void 
++CarControl::setBrake (float brake)
++{
++        this->brake = brake;
++};
++
++int
++CarControl::getGear() const
++{
++        return this->gear;
++};
++
++void 
++CarControl::setGear(int gear)
++{
++        this->gear = gear;
++};
++
++float 
++CarControl::getSteer() const
++{
++        return this->steer;
++};
++
++void 
++CarControl::setSteer(float steer)
++{
++        this->steer = steer;
++};
++
++int
++CarControl::getMeta() const
++{
++        return this->meta;
++};
++
++void 
++CarControl::setMeta(int meta)
++{
++        this->meta = meta;
++};
++
++float
++CarControl::getClutch() const
++{
++       return clutch;
++}
++
++void
++CarControl::setClutch(float clutch)
++{
++       this->clutch = clutch;
++}
++
++int
++CarControl::getFocus()
++{ 
++        return this->focus;
++};
++
++void
++CarControl::setFocus(int focus)
++{ 
++        this->focus = focus;
++};
+diff --git a/custom/custom_source/ObstacleSensors.cpp b/custom/custom_source/ObstacleSensors.cpp
+new file mode 100644
+index 0000000..0a3cc3b
+--- /dev/null
++++ b/custom/custom_source/ObstacleSensors.cpp
+@@ -0,0 +1,194 @@
++/***************************************************************************
++ 
++    file                 : ObstacleSensors.cpp
++    copyright            : (C) 2008 Lugi Cardamone, Daniele Loiacono, Matteo Verzola
++						   (C) 2013 Wolf-Dieter Beelitz
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++//#define __DEBUG_OPP_SENS__
++
++
++#include "ObstacleSensors.h"
++
++void SingleObstacleSensor::init(tCarElt *car,double start_angle, double angle_covered,double range)
++{
++	this->car = car;
++	sensor_range=range;
++	sensor_angle_covered = angle_covered; 
++	sensor_angle_start = start_angle;
++	sensor_out=0;   //value ranges from 0 to 1: 0="No obstacle in sight" 1="Obstacle too close (collision)!"
++		
++}
++
++void SingleObstacleSensor::setSingleObstacleSensor(double sens_value)
++{
++	sensor_out=sens_value;
++}
++
++ObstacleSensors::ObstacleSensors(int sensors_number, tTrack* track, tCarElt* car, tSituation *situation, int range )
++{
++	sensors_num=sensors_number;
++	anglePerSensor = 360.0 / (double)sensors_number; 
++	obstacles_in_range = new Obstacle[situation->_ncars];
++
++	all_obstacles = new Obstacle[situation->_ncars];
++	
++	sensors = new SingleObstacleSensor[sensors_number];
++
++	for (int i = 0; i < sensors_number; i++) {
++		sensors[i].init(car,i*anglePerSensor, anglePerSensor, range);
++
++	}
++
++	myc = car;
++	sensorsRange= range;
++	
++}
++
++ObstacleSensors::~ObstacleSensors()
++{
++	delete [] sensors;
++	delete [] obstacles_in_range;
++	delete [] all_obstacles;
++}
++
++double ObstacleSensors::getObstacleSensorOut(int sensor_id)
++{
++	return sensors[sensor_id].getSingleObstacleSensorOut();
++}
++
++void ObstacleSensors::sensors_update(tSituation *situation)
++{
++	
++	for (int i = 0; i < situation->_ncars && situation->_ncars != 1; i++) 
++	{
++		// Compute the distance between my car and the opponent in the (x,y) space 
++		all_obstacles[i].dist_horiz = myc->pub.DynGC.pos.x - situation->cars[i]->pub.DynGC.pos.x;
++		all_obstacles[i].dist_vert = myc->pub.DynGC.pos.y - situation->cars[i]->pub.DynGC.pos.y;
++		// Compute distance as the crow flies 
++		all_obstacles[i].dist = sqrt(pow(all_obstacles[i].dist_vert,2) + pow(all_obstacles[i].dist_horiz,2));
++	}
++
++	/* Remove the opponents out the sensor range (to avoid useless computation) */
++	int j=0;  
++	for(int i=0; i< situation->_ncars && situation->_ncars != 1; i++)
++	{		
++		if(all_obstacles[i].dist < sensorsRange && all_obstacles[i].dist > 0)
++		{
++			obstacles_in_range[j].dist_vert = all_obstacles[i].dist_vert;
++			obstacles_in_range[j].dist_horiz = all_obstacles[i].dist_horiz;
++			obstacles_in_range[j].dist = all_obstacles[i].dist;
++			j++;
++		}
++	}
++
++	/* Initizialization of sensors */
++	for(int i=0; i<sensors_num; i++)
++	{
++		sensors[i].setSingleObstacleSensor( sensorsRange );
++	}
++
++	for(int i=0; i<j; i++) 
++	{		
++
++			
++		/* Compute the absolute angle, i.e., the angle between car and opponent w.r.t. (x,y) axis */
++		float deltax = (float) -obstacles_in_range[i].dist_horiz;
++		float deltay = (float) -obstacles_in_range[i].dist_vert;
++
++		double abs_angle;
++		if (deltax >=0 && deltay >=0)
++			abs_angle=atan(deltay/deltax)* 180 / PI;
++		if (deltax <0 && deltay >=0)
++			abs_angle=180 + atan(deltay/deltax)* 180 / PI;
++		if (deltax <0 && deltay <0)
++			abs_angle=-180+atan(deltay/deltax)* 180 / PI;			
++		if (deltax >=0 && deltay <0)
++			abs_angle=atan(deltay/deltax)* 180 / PI;	
++		
++		// Angle between the car w.r.t. to the x axis
++		double relative_angle = myc->_yaw*180/PI;
++
++		// Angle between the car and the opponent w.r.t. to the car axis (normalized between -180 and +180)
++		double car_angle = (relative_angle - abs_angle);
++		if (car_angle>=180)
++			car_angle-=360;
++		if (car_angle<=-180)
++			car_angle+=360;
++
++		/* Angle used by the opponent sensors, i.e. the car_angle mapped to [0,360] range*/
++		double sensor_angle = 180 + car_angle;
++
++		
++#ifdef __DEBUG_OPP_SENS__
++		printf("deltax: %f deltay: %f abs_angle: %f rel_angle: %f car_angle: %g sensor_angle: %f\n", 	
++						deltax,deltay,abs_angle,relative_angle,car_angle, sensor_angle);
++
++
++#endif
++		/* Compute in which opponent sensor the opponent perceived falls */
++		int position;  
++		position = (int)( sensor_angle / (360/sensors_num) );
++
++		if(position >= 0 && position < sensors_num )		
++			if (obstacles_in_range[i].dist < sensors[position].getSingleObstacleSensorOut())
++				sensors[position].setSingleObstacleSensor(obstacles_in_range[i].dist);
++	}
++
++	/* Saturation of sensors readings*/
++	for(int i=0; i<sensors_num; i++)
++	{
++		if(sensors[i].getSingleObstacleSensorOut() >= sensorsRange)
++			sensors[i].setSingleObstacleSensor(sensorsRange);
++	}
++}
++
++void ObstacleSensors::printSensors()
++{
++	int tabsBefore;
++	int tabsAfter;
++	if(sensors_num % 2 == 0)
++	{
++		for(int curLevel=0; curLevel<sensors_num/2; curLevel++)
++		{
++			tabsBefore=sensors_num/2 - curLevel - 1;
++			tabsAfter= curLevel*2+1;
++			for(int i=0; i<tabsBefore; i++)
++				printf("\t");
++			printf("%.2f",sensors[sensors_num/2-1-curLevel].getSingleObstacleSensorOut());
++			for(int i=0; i<tabsAfter; i++)
++				printf("\t");
++			printf("%.2f",sensors[sensors_num/2+curLevel].getSingleObstacleSensorOut());
++			printf("\n");
++		}
++		
++	}
++	else
++	{
++		for(int curLevel=0; curLevel<(sensors_num/2+1); curLevel++)
++		{
++			tabsBefore=sensors_num/2 - curLevel ;
++			tabsAfter= curLevel*2 ;
++			for(int i=0; i<tabsBefore; i++)
++				printf("\t");
++			printf("%.2f",sensors[sensors_num/2-1-curLevel].getSingleObstacleSensorOut());
++			if(curLevel>0)
++			{
++				for(int i=0; i<tabsAfter; i++)
++					printf("\t");
++				if(curLevel==0)
++					printf(" ");
++				printf("%.2f",sensors[sensors_num/2+curLevel].getSingleObstacleSensorOut());
++			}
++			printf("\n");
++		}
++	}
++}
+diff --git a/custom/custom_source/SimpleParser.cpp b/custom/custom_source/SimpleParser.cpp
+new file mode 100644
+index 0000000..fcd360e
+--- /dev/null
++++ b/custom/custom_source/SimpleParser.cpp
+@@ -0,0 +1,128 @@
++/***************************************************************************
++ 
++    file                 : SimpleParser.cpp
++    copyright            : (C) 2007 Daniele Loiacono
++ 
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++#include "SimpleParser.h"
++
++bool
++SimpleParser::parse(string sensors, string tag, float &value)
++{
++	size_t open,close;
++	open = sensors.find_first_of('(');
++	while (open!=string::npos)
++	{		
++		close = sensors.find_first_of(')',open);
++		if (close != string::npos)
++		{
++			istringstream IN(sensors.substr(open+1,close-open-1));
++			string currTag;
++			IN >> currTag;
++			if (currTag.compare(tag)==0)
++			{
++				IN >> value;
++				return true;
++			}
++			open = sensors.find_first_of('(',close+1);
++		}
++		else
++			return false;
++
++	}
++	return false;
++}
++
++bool
++SimpleParser::parse(string sensors, string tag, int &value)
++{
++	size_t open,close;
++	open = sensors.find_first_of('(');;
++	while (open!=string::npos)
++	{		
++		close = sensors.find_first_of(')',open);
++		if (close != string::npos)
++		{
++			istringstream IN(sensors.substr(open+1,close-open-1));
++			string currTag;
++			IN >> currTag;
++			if (currTag.compare(tag)==0)
++			{
++				IN >> value;
++				return true;
++			}
++			open = sensors.find_first_of('(',close+1);
++		}
++		else
++			return false;
++	}
++	return false;
++}
++
++bool
++SimpleParser::parse(string sensors, string tag, float *value, int size)
++{
++	size_t open,close;
++	open = sensors.find_first_of('(');
++	while (open!=string::npos)
++	{		
++		close = sensors.find_first_of(')',open);
++		if (close != string::npos)
++		{
++			istringstream IN(sensors.substr(open+1,close-open-1));
++			string currTag;
++			IN >> currTag;
++			if (currTag.compare(tag)==0)
++			{				
++				for (int i = 0; i < size; ++i) 
++				{
++					if (! (IN >> value[i]) )
++						return false;
++				}
++				return true;
++			}
++			open = sensors.find_first_of('(',close+1);
++		}
++		else
++			return false;
++	}
++	return false;
++}
++
++string 
++SimpleParser::stringify(string tag, float value)
++{
++	ostringstream STR;
++	STR << "(" << tag << " " << value << ")";
++	return STR.str();
++}
++
++string 
++SimpleParser::stringify(string tag, int value)
++{
++	ostringstream STR;
++	STR << "(" << tag << " " << value << ")";
++	return STR.str();
++}
++
++string 
++SimpleParser::stringify(string tag, float *value, int size)
++{
++	ostringstream STR;
++	STR << "(" << tag;
++	for (int i = 0; i < size; ++i) 
++	{
++		STR << " " << value[i];
++	}
++	STR << ")";
++	return STR.str();
++}
+diff --git a/custom/custom_source/get_sensors.cpp b/custom/custom_source/get_sensors.cpp
+new file mode 100644
+index 0000000..7845203
+--- /dev/null
++++ b/custom/custom_source/get_sensors.cpp
+@@ -0,0 +1,164 @@
++/***************************************************************************
++
++    file                 : scr_server.cpp
++    copyright            : (C) 2007 Daniele Loiacono
++
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++
++#include <get_sensors.h>
++
++get_sensor::get_sensor(tTrack* track,  tCarElt* car, tSituation *s){
++    __SENSORS_RANGE__ = 200;
++    curTrack = track;
++    curCar = car;
++    curS = s;
++    srand(time(NULL));
++    float a__[19] = {-45 ,-19, -12 ,-7 ,-4 ,-2.5 ,-1.7 ,-1 ,-0.5, 0 ,0.5 ,1 ,1.7, 2.5 ,4 ,7 ,12 ,19, 45};
++    for (int i = 0; i < 19; ++i) {
++        trackSensAngle[i] = a__[i];
++    }
++    
++    focusSens = new Sensors(car, 5);//ML
++    for (int i = 0; i < 5; ++i) {//ML
++        focusSens->setSensor(i,(car->_focusCmd)+i-2.0,200);//ML
++    }//ML
++    trackSens = new Sensors(car, 19);
++    for (int i = 0; i < 19; ++i) {
++        trackSens->setSensor(i,trackSensAngle[i],__SENSORS_RANGE__);
++    }
++    oppSens = new ObstacleSensors(36, curTrack, car, s, (int) __SENSORS_RANGE__);
++
++    prevDist=-1;
++}
++void get_sensor::set_sensor(){
++
++    dist_to_middle = 2*curCar->_trkPos.toMiddle/(curCar->_trkPos.seg->width);
++    angle =  RtTrackSideTgAngleL(&(curCar->_trkPos)) - curCar->_yaw;
++    NORM_PI_PI(angle); // normalize the angle between -PI and + PI
++
++//Update focus sensors' angle
++    for (int i = 0; i < 5; ++i) {
++        focusSens->setSensor(i,(curCar->_focusCmd)+i-2.0,200);
++    }
++
++    // update the value of track sensors only as long as the curCar is inside the track
++    float trackSensorOut[19];
++    float focusSensorOut[5];//ML
++    if (dist_to_middle<=1.0 && dist_to_middle >=-1.0 )
++    {
++        trackSens->sensors_update();
++        for (int i = 0; i < 19; ++i)
++        {
++            trackSensorOut[i] = trackSens->getSensorOut(i);
++            if (getNoisy())
++                trackSensorOut[i] *= normRand(1,__NOISE_STD__);
++        }
++        focusSens->sensors_update();//ML
++        if ((curCar->_focusCD <= curCar->_curLapTime + curCar->_curTime)//ML Only send focus sensor reading if cooldown is over
++            && (curCar->_focusCmd != 360))//ML Only send focus reading if requested by client
++        {//ML
++            for (int i = 0; i < 5; ++i)
++            {
++                focusSensorOut[i] = focusSens->getSensorOut(i);
++                if (getNoisy())
++                    focusSensorOut[i] *= normRand(1,__FOCUS_NOISE_STD__);
++            }
++            curCar->_focusCD = curCar->_curLapTime + curCar->_curTime + 1.0;//ML Add cooldown [seconds]
++        }//ML
++        else//ML
++        {//ML
++            for (int i = 0; i < 5; ++i)//ML
++                focusSensorOut[i] = -1;//ML During cooldown send invalid focus reading
++        }//ML
++    }
++    else
++    {
++        for (int i = 0; i < 19; ++i)
++        {
++            trackSensorOut[i] = -1;
++        }
++        for (int i = 0; i < 5; ++i)
++        {
++            focusSensorOut[i] = -1;
++        }
++    }
++    
++    // update the value of opponent sensors
++    float oppSensorOut[36];
++    oppSens->sensors_update(curS);
++    for (int i = 0; i < 36; ++i)
++    {
++        oppSensorOut[i] = oppSens->getObstacleSensorOut(i);
++        if (getNoisy())
++            oppSensorOut[i] *= normRand(1,__OPP_NOISE_STD__);
++    }
++
++    float wheelSpinVel[4];
++    for (int i=0; i<4; ++i)
++    {
++        wheelSpinVel[i] = curCar->_wheelSpinVel(i);
++    }
++
++    if (prevDist<0)
++    {
++    prevDist = curCar->race.distFromStartLine;
++    }
++    float curDistRaced = curCar->race.distFromStartLine - prevDist;
++    prevDist = curCar->race.distFromStartLine;
++    if (curDistRaced>100)
++    {
++    curDistRaced -= curTrack->length;
++    }
++    if (curDistRaced<-100)
++    {
++    curDistRaced += curTrack->length;
++    }
++
++    distRaced += curDistRaced;
++
++    if (is_sim_dqn_main){
++        *is_ready_dqn_main = false;
++        *angle_dqn_main = angle;
++        for(int j = 0 ;j < 19 ; j++)
++            track_dqn_main[j] = trackSensorOut[j];
++        for(int j = 0 ;j < 36 ; j++)
++            opponents_main[j] = oppSensorOut[j];
++        for(int j = 0 ;j < 5 ; j++)
++            focus_main[j] = focusSensorOut[j];
++        *track_pos_dqn_main = dist_to_middle;
++        *speed_x_dqn_main = curCar->_speed_x  * 3.6;
++        *speed_y_dqn_main = curCar->_speed_y  * 3.6;
++        *speed_z_dqn_main = curCar->_speed_z  * 3.6;
++        for(int j = 0 ;j < 4 ; j++)
++            wheel_dqn_main[j] = wheelSpinVel[j];
++        *rpm_dqn_main = curCar->_enginerpm * 10;
++
++        *damage_main = curCar->_dammage;
++        *curLapTime_main = curCar->_curLapTime;
++        *lastLapTime_main = curCar->_lastLapTime;
++        *distFromStart_main = curCar->race.distFromStartLine;
++        *distRaced_main = distRaced;
++        *fuel_main = curCar->_fuel;
++        *racePos_main = curCar->race.pos;
++        *gear_main = curCar->_gear;
++        *z_main = curCar->_pos_Z - RtTrackHeightL(&(curCar->_trkPos));
++    
++        *is_ready_dqn_main = true;    
++        is_sim_dqn_main = false;
++    }
++    if(*pis_restart_main_write){	
++        curCar->ctrl.askRestart = true;
++        *pis_restart_main_write = false;
++        *is_ready_dqn_main = false;
++    }
++}
++
+diff --git a/custom/custom_source/sensors.cpp b/custom/custom_source/sensors.cpp
+new file mode 100644
+index 0000000..7f09260
+--- /dev/null
++++ b/custom/custom_source/sensors.cpp
+@@ -0,0 +1,550 @@
++/***************************************************************************
++ 
++    file                 : sensors.cpp
++    copyright            : (C) 2007 Alessandro Prete, Daniele Loiacono
++ 
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *  
++ ***************************************************************************/                                                 
++ 
++#include "sensors.h"
++
++#define HALF_PI PI/2
++
++Sensors::Sensors(tCarElt *car, int sensors_number)
++{
++	sensors_num = sensors_number;
++	sensor = new SingleSensor[sensors_num];
++	for (int i = 0; i < sensors_num; i++) sensor[i].init(car);
++}
++
++
++Sensors::~Sensors()
++{
++	delete [] sensor;
++}
++
++
++void Sensors::sensors_update()
++{
++	for (int i = 0; i < sensors_num; i++) sensor[i].update();
++}
++
++
++void Sensors::setSensor(int sensor_id, float angle, float range)
++{ 
++	sensor[sensor_id].setSingleSensor(angle, range); 
++}
++
++
++float Sensors::getSensorOut(int sensor_id)
++{ 
++	return sensor[sensor_id].getSingleSensorOut(); 
++}
++
++
++void SingleSensor::setSingleSensor(float angle, float range)
++{
++	sensor_angle = (angle*PI)/180;
++	sensor_range = range;
++}
++
++
++void SingleSensor::update()
++{
++	//Angolo del sensore relativo al segmento del tracciato
++	float relative_sensor_angle = RtTrackSideTgAngleL(&(car->_trkPos)) - car->_yaw + sensor_angle; 
++
++/*	printf ("\nabsolute_car_angle:               %f (degree)", (car->_yaw*180)/PI);
++	printf ("\nabsolute_sensor_angle:            %f (degree)", (absolute_sensor_angle*180)/PI);
++	printf ("\nabsolute_track_angle:             %f (degree)", (absolute_track_angle*180)/PI);
++	printf ("\nrelative_sensor_angle:            %f (degree)", (relative_sensor_angle*180)/PI);
++	printf ("\nsensor_angle:					 %f (degree)", (sensor_angle*180)/PI);*/
++	
++	NORM_PI_PI(relative_sensor_angle);
++	
++/*	printf ("\nrelative_sensor_angle normalized: %f (degree)", (relative_sensor_angle*180)/PI);
++	printf ("\nX1:                               %f (meters)", car->_trkPos.toLeft);
++	printf ("\nX2:                               %f (meters)", car->_trkPos.toRight);
++	printf ("\nY:                                %f (meters or arc)", car->_trkPos.toStart);
++	printf ("\nTo Middle:                        %f (meters)", car->_trkPos.toMiddle);
++	printf ("\nTrack Segment Start Width:        %f (meters)", car->_trkPos.seg->startWidth);
++	printf ("\nTrack Segment End Width:          %f (meters)", car->_trkPos.seg->endWidth);
++	printf ("\nTrack Segment Length:             %f (meters)\n", car->_trkPos.seg->length);*/
++
++	switch (car->_trkPos.seg->type) 
++	{
++		case 3: sensor_out = sensor_calc_str(car->_trkPos.seg, car->_trkPos.toLeft, car->_trkPos.toStart, -relative_sensor_angle, sensor_range);
++				break;
++		case 2:	sensor_out = sensor_calc_lft_rgt(car->_trkPos.seg, car->_trkPos.toLeft, car->_trkPos.toStart, -relative_sensor_angle, sensor_range);
++				break;
++		case 1:	sensor_out = sensor_calc_lft_rgt(car->_trkPos.seg, car->_trkPos.toLeft, car->_trkPos.toStart, -relative_sensor_angle, sensor_range);
++				break;
++	}
++}
++
++
++float SingleSensor::sensor_calc_str(tTrackSeg *seg, float x_coord, float y_coord, float angle, float remaining_range) 
++{
++	float x_sx = x_coord;						//meters
++	float x_dx = (seg->startWidth) - x_coord;	//meters
++	float y_up = (seg->length) - y_coord;		//meters
++	float y_dn = y_coord;						//meters
++
++	if (cos(angle) == 0)
++	{
++		if (angle > 0)
++		{
++			if (x_sx < remaining_range) return x_sx;
++			else return remaining_range;
++		}
++		else 
++		{
++			if (x_dx < remaining_range) return x_dx;
++			else return remaining_range;
++		}
++	}
++	else
++		if (cos(angle) > 0 && sin(angle) >= 0)
++		{
++			if ((x_sx/y_up) > tan(angle)) //potrei incontrare il bordo superiore, controllare il range 
++			{
++				float partial = y_up/cos(angle);
++				if (partial >= remaining_range) return remaining_range;
++				else
++				{
++					float x = x_sx - (partial * sin(angle));
++					float partial_returned=0.1f;
++					switch (seg->next->type) 
++					{
++						case 3:	partial_returned = sensor_calc_str(seg->next, x, 0, angle, (remaining_range - partial));
++								break;
++						case 2:	partial_returned = sensor_calc_lft_rgt(seg->next, x, 0, angle, (remaining_range - partial));
++								break;
++						case 1:	partial_returned = sensor_calc_lft_rgt(seg->next, x, 0, angle, (remaining_range - partial));
++								break;
++					}
++					return (partial_returned + partial);
++				}
++			}
++			else //potrei incontrare il bordo sinistro, controllare il range
++			{
++				float temp_val = x_sx / cos((HALF_PI) - angle);
++				if (temp_val >= remaining_range) return remaining_range;
++				else return temp_val;
++			}
++		}
++	else
++		if (cos(angle) > 0 && sin(angle) < 0)
++		{
++			if ((x_dx/y_up) > -tan(angle)) //potrei incontrare il bordo superiore, controllare il range
++			{
++				float partial = y_up/cos(angle);
++				if (partial >= remaining_range) return remaining_range;
++				else
++				{
++					float x = x_sx + (partial * sin(-angle));
++					float partial_returned=0.1f;
++					switch (seg->next->type)
++					{
++						case 3:	partial_returned = sensor_calc_str(seg->next, x, 0, angle, (remaining_range - partial));
++								break;
++						case 2:	partial_returned = sensor_calc_lft_rgt(seg->next, x, 0, angle, (remaining_range - partial));
++								break;
++						case 1:	partial_returned = sensor_calc_lft_rgt(seg->next, x, 0, angle, (remaining_range - partial));
++								break;
++					}
++					return (partial_returned + partial);
++				}
++			}
++			else //potrei incontrare il bordo destro, controllare il range
++			{
++				float temp_val = x_dx / cos((HALF_PI) + angle);
++				if (temp_val >= remaining_range) return remaining_range;
++				else return temp_val;
++			}
++		}
++	else
++		if (cos(angle) < 0 && sin(angle) >= 0)
++		{
++			if ((x_sx/y_dn) > tan(PI-angle)) //potrei incontrare il bordo inferiore, controllare il range
++			{
++				float partial = y_dn/-cos(angle);
++				if (partial >= remaining_range) return remaining_range;
++				else
++				{
++					float x = x_sx - (partial * sin(PI-angle));
++					float partial_returned=0.1f;
++					switch (seg->prev->type) 
++					{
++						case 3:	partial_returned = sensor_calc_str(seg->prev, x, seg->prev->length, angle, (remaining_range - partial));
++								break;
++						case 2:	partial_returned = sensor_calc_lft_rgt(seg->prev, x, seg->prev->arc, angle, (remaining_range - partial));
++								break;
++						case 1:	partial_returned = sensor_calc_lft_rgt(seg->prev, x, seg->prev->arc, angle, (remaining_range - partial));
++								break;
++					}
++					return (partial_returned + partial);
++				}
++			}
++			else //potrei incontrare il bordo sinistro, controllare il range
++			{
++				float temp_val = x_sx / cos(angle - (HALF_PI));
++				if (temp_val >= remaining_range) return remaining_range;
++				else return temp_val;
++			}
++		}
++	else
++		if (cos(angle) < 0 && sin(angle) < 0)
++		{
++			if ((x_dx/y_dn) > tan(PI+angle)) //potrei incontrare il bordo inferiore, controllare il range
++			{
++				float partial = y_dn / cos(PI + angle);
++				if (partial >= remaining_range) return remaining_range;
++				else
++				{
++					float x = x_sx + partial * sin(PI + angle);
++					float partial_returned=0.1f;
++					switch (seg->prev->type) 
++					{
++						case 3:	partial_returned = sensor_calc_str(seg->prev, x, seg->prev->length, angle, (remaining_range - partial));
++								break;
++						case 2:	partial_returned = sensor_calc_lft_rgt(seg->prev, x, seg->prev->arc, angle, (remaining_range - partial));
++								break;
++						case 1:	partial_returned = sensor_calc_lft_rgt(seg->prev, x, seg->prev->arc, angle, (remaining_range - partial));
++								break;
++					}
++					return (partial_returned + partial);
++				}
++			}
++			else //potrei incontrare il bordo destro, controllare il range
++			{
++				float temp_val = x_dx / cos(-angle - (HALF_PI));
++				if (temp_val >= remaining_range) return remaining_range;
++				else return temp_val;
++			}
++		}
++	else return remaining_range;
++}
++
++
++float SingleSensor::sensor_calc_lft_rgt(tTrackSeg *seg, float x_coord, float y_coord, float angle, float remaining_range) 
++{
++	float x_sx = x_coord;						//meters
++	float x_dx = (seg->startWidth) - x_sx;		//meters
++	float y_up = (seg->arc) - y_coord;			//radians
++	float y_dn = y_coord;						//radians
++	float radius_max, radius_min, radius_x, temp_angle;
++
++	if (seg->type == 2)
++	{
++		radius_max = seg->radiusr;
++		radius_min = seg->radiusl;
++		radius_x = radius_min + x_sx;
++		temp_angle = angle;
++	}
++	else
++	{
++		radius_max = seg->radiusl;
++		radius_min = seg->radiusr;
++		radius_x = radius_min + x_dx;
++		temp_angle = -angle;
++	}
++	
++	float dist_returned;
++	float angle_returned;
++	float x_returned;
++	if (check_max_circle_intersect(temp_angle, radius_max, radius_x, y_dn, y_up, remaining_range, dist_returned)) return dist_returned;
++	else if	(check_min_circle_intersect(temp_angle, radius_min, radius_x, y_dn, y_up, remaining_range, dist_returned)) return dist_returned;
++	else if (check_up_border_intersect(temp_angle, radius_min, radius_x, y_up, remaining_range, dist_returned, angle_returned, x_returned))
++	{
++		float partial_returned=0.1f;
++//		printf ("\nRecursive Call for next segment\n");
++		
++		// Correction of outputs if we are currently in a right turn (Daniele Loiacono - 3/2009)
++		if (seg->type == 1)
++		{
++			x_returned = seg->startWidth - x_returned;
++			angle_returned = -angle_returned;
++		}
++
++		if (seg->next->type==3) 
++		{
++			partial_returned = sensor_calc_str(seg->next, x_returned, 0, angle_returned, (remaining_range - dist_returned));
++		} 
++		else
++		{
++			partial_returned = sensor_calc_lft_rgt(seg->next, x_returned, 0, angle_returned, (remaining_range - dist_returned));
++
++		}
++		return (partial_returned + dist_returned);
++	}
++	else if (check_down_border_intersect(temp_angle, radius_min, radius_x, y_dn, remaining_range, dist_returned, angle_returned, x_returned))
++	{
++		float partial_returned=0.1f;
++//		printf ("\nRecursive Call for prev segment\n");
++
++		// Correction of outputs if we are currently in a right turn (Daniele Loiacono - 3/2009)
++		if (seg->type == 1)
++		{
++			x_returned = seg->startWidth - x_returned;
++			angle_returned = -angle_returned;
++		}
++
++		if (seg->prev->type==3) 
++		{
++			partial_returned = sensor_calc_str(seg->prev, x_returned, seg->prev->length, angle_returned, (remaining_range - dist_returned));
++					
++		}
++		else
++		{
++			partial_returned = sensor_calc_lft_rgt(seg->prev, x_returned, seg->prev->arc, angle_returned, (remaining_range - dist_returned));
++		}		
++		return (partial_returned + dist_returned);
++	}
++	else return remaining_range;
++}
++
++
++bool SingleSensor::check_max_circle_intersect(float angle, float radius_max, float radius_x, float y_dn, float y_up, float remaining_range, float &dist_returned)
++{
++	if (angle < 0)
++	{
++		if (angle >= -(HALF_PI))
++		{
++			float check = radius_x * cos(-angle);
++			float beta = acos(check/radius_max);
++			float gamma = beta + angle;
++			if (gamma <= y_up) //il sensore potrebbe incontrare il cerchio max in questo segmento
++			{
++				float check_dist = radius_x * sin(-angle);
++				float z = radius_max * sin(beta);
++				float dist = z - check_dist;
++				if (dist <= remaining_range)
++				{ 
++					dist_returned = dist;
++//					printf ("\nMax Circle Intersection (-90 < angle < 0)\n");
++					return true;
++				}
++				else return false;
++			}
++			else return false;
++		}
++		else // if (angle < -(HALF_PI))
++		{
++			float check = radius_x * cos(PI + angle);
++			float beta = acos(check/radius_max);
++			float gamma = beta - angle - PI;
++			if (gamma <= y_dn) //il sensore potrebbe incontrare il cerchio max in questo segmento
++			{
++				float check_dist = radius_x * sin(PI + angle);
++				float z = radius_max * sin(beta);
++				float dist = z - check_dist;
++				if (dist <= remaining_range)
++				{ 
++					dist_returned = dist;
++//					printf ("\nMax Circle Intersection (-180 < angle < -90)\n");
++					return true;
++				}
++				else return false;
++			}
++			else return false;
++		}
++	}
++	
++	else if (angle > 0)
++	{
++		if (angle <= (HALF_PI))
++		{
++			float check = radius_x * cos(angle);
++			float beta = acos(check/radius_max);
++			float gamma = beta + angle;
++			if (gamma <= y_up) //il sensore potrebbe incontrare il cerchio max in questo segmento
++			{
++				float check_dist = radius_x * sin(angle);
++				float z = radius_max * sin(beta);
++				float dist = z + check_dist;
++				if (dist <= remaining_range)
++				{ 
++					dist_returned = dist;
++//					printf ("\nMax Circle Intersection (0 < angle < 90)\n");
++					return true;
++				}
++				else return false;
++			}
++			else return false;
++		}
++		else // if (angle > (HALF_PI))
++		{
++			float check = radius_x * cos(PI + angle);
++			float beta = acos(check/radius_max);
++			float gamma = beta + angle + PI;
++			if (gamma <= y_up) //il sensore potrebbe incontrare il cerchio max in questo segmento
++			{
++				float check_dist = radius_x * sin(PI + angle);
++				float z = radius_max * sin(beta);
++				float dist = z + check_dist;
++				if (dist <= remaining_range)
++				{ 
++					dist_returned = dist;
++//					printf ("\nMax Circle Intersection (90 < angle < 180)\n");
++					return true;
++				}
++				else return false;
++			}
++			else return false;
++		}
++	}
++	else return false;
++}
++
++
++bool SingleSensor::check_min_circle_intersect(float angle, float radius_min, float radius_x, float y_dn, float y_up, float remaining_range, float &dist_returned)
++{
++	if (angle > 0 && angle <= (HALF_PI))
++	{
++		float check = radius_x * cos(angle);
++		float beta = acos(check/radius_min);
++		float gamma = angle - beta;
++		if (gamma <= y_up) //il sensore potrebbe incontrare il cerchio min in questo segmento
++		{
++			float check_dist = radius_x * sin(angle);
++			float z = radius_min * sin(beta);
++			float dist = check_dist - z;
++			if (dist <= remaining_range)
++			{ 
++				dist_returned = dist;
++//				printf ("\nMin Circle Intersection (0 < angle < 90)\n");
++				return true;
++			}
++			else return false;
++		}
++		else return false;
++	}
++	else if (angle > 0 && angle > (HALF_PI))
++	{
++		float check = radius_x * cos(PI - angle);
++		float beta = acos(check/radius_min);
++		float gamma = PI - beta - angle;
++		if (gamma <= y_dn && gamma >= 0.0) //il sensore potrebbe incontrare il cerchio min in questo segmento
++		{
++			float check_dist = radius_x * sin(PI - angle);
++			float z = radius_min * sin(beta);
++			float dist = check_dist - z;
++			if (dist <= remaining_range)
++			{ 
++				dist_returned = dist;
++//				printf ("\nMin Circle Intersection (90 < angle < 180)\n");
++				return true;
++			}
++			else return false;
++		}
++		else return false;
++	}
++	else return false;
++}
++
++
++bool SingleSensor::check_up_border_intersect(float angle, float radius_min, float radius_x, float y_up, float remaining_range, float &dist_returned, float &angle_returned, float &x_returned)
++{
++	if (angle < (HALF_PI) && angle > -(HALF_PI))
++	{
++		if (angle >= y_up)
++		{
++			float check_dist = radius_x * sin(y_up);
++			float dist = check_dist / cos(angle - y_up);
++			if (dist < remaining_range) //il sensore incontra il bordo superiore di questo segmento
++			{
++				float z = dist * sin(angle - y_up);
++				float check = radius_x * cos(y_up);
++				dist_returned = dist;
++				angle_returned = angle - y_up;
++				x_returned =  check - z - radius_min;
++//				printf ("\nUp Boarder Intersection\n");
++				return true;
++			}
++			else return false;
++		}
++		else
++		{
++			float check_dist = radius_x * sin(y_up);
++			float dist = check_dist / cos(y_up - angle);
++			if (dist < remaining_range) //il sensore incontra il bordo superiore di questo segmento
++			{
++				float z = dist * sin(y_up - angle);
++				float check = radius_x * cos(y_up);
++				dist_returned = dist;
++				angle_returned = - (y_up - angle);
++				x_returned =  check + z - radius_min;
++//				printf ("\nUp Boarder Intersection\n");
++				return true;
++			}
++			else return false;
++		}
++	}
++	else return false;
++}
++
++
++bool SingleSensor::check_down_border_intersect(float angle, float radius_min, float radius_x, float y_dn, float remaining_range, float &dist_returned, float &angle_returned, float &x_returned)
++{
++	if (angle > (HALF_PI) || angle < -(HALF_PI))
++	{
++		if (angle > 0 && angle <= (PI - y_dn))
++		{
++			float check_dist = radius_x * sin(y_dn);
++			float dist = check_dist / cos(PI - angle - y_dn);
++			if (dist < remaining_range) //il sensore incontra il bordo inferiore di questo segmento
++			{
++				float z = dist * sin(PI - angle - y_dn);
++				float check = radius_x * cos(y_dn);
++				dist_returned = dist;
++				angle_returned = angle + y_dn;
++				x_returned =  check - z - radius_min;
++//				printf ("\nDown Boarder Intersection\n");
++				return true;
++			}
++			else return false;
++		}
++		else if (angle > 0 && angle > (PI - y_dn))
++		{
++			float check_dist = radius_x * sin(y_dn);
++			float dist = check_dist / cos(y_dn + angle - PI);
++			if (dist < remaining_range) //il sensore incontra il bordo inferiore di questo segmento
++			{
++				float z = dist * sin(y_dn + angle - PI);
++				float check = radius_x * cos(y_dn);
++				dist_returned = dist;
++				angle_returned = -((2 * PI) - angle - y_dn);
++				x_returned =  check + z - radius_min;
++//				printf ("\nDown Boarder Intersection\n");
++				return true;
++			}
++			else return false;
++		}
++		else
++		{
++			float check_dist = radius_x * sin(y_dn);
++			float dist = check_dist / cos(y_dn + angle + PI);
++			if (dist < remaining_range) //il sensore incontra il bordo inferiore di questo segmento
++			{
++				float z = dist * sin(y_dn + angle + PI);
++				float check = radius_x * cos(y_dn);
++				dist_returned = dist;
++				angle_returned = -(-angle - y_dn);
++				x_returned =  check + z - radius_min;
++//				printf ("\nDown Boarder Intersection\n");
++				return true;
++			}
++			else return false;
++		}
++	}
++	else return false;
++}
+diff --git a/src/drivers/berniw/.depend b/src/drivers/berniw/.depend
+index ad1090f..75795e2 100644
+--- a/src/drivers/berniw/.depend
++++ b/src/drivers/berniw/.depend
+@@ -1,89 +1,3 @@
+-berniw.o: berniw.cpp /usr/include/stdc-predef.h berniw.h \
+- /usr/include/stdio.h /usr/include/features.h \
+- /usr/include/x86_64-linux-gnu/sys/cdefs.h \
+- /usr/include/x86_64-linux-gnu/bits/wordsize.h \
+- /usr/include/x86_64-linux-gnu/gnu/stubs.h \
+- /usr/include/x86_64-linux-gnu/gnu/stubs-64.h \
+- /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stddef.h \
+- /usr/include/x86_64-linux-gnu/bits/types.h \
+- /usr/include/x86_64-linux-gnu/bits/typesizes.h /usr/include/libio.h \
+- /usr/include/_G_config.h /usr/include/wchar.h \
+- /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stdarg.h \
+- /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
+- /usr/include/x86_64-linux-gnu/bits/sys_errlist.h /usr/include/stdlib.h \
+- /usr/include/x86_64-linux-gnu/bits/waitflags.h \
+- /usr/include/x86_64-linux-gnu/bits/waitstatus.h /usr/include/endian.h \
+- /usr/include/x86_64-linux-gnu/bits/endian.h \
+- /usr/include/x86_64-linux-gnu/bits/byteswap.h \
+- /usr/include/x86_64-linux-gnu/bits/byteswap-16.h /usr/include/xlocale.h \
+- /usr/include/x86_64-linux-gnu/sys/types.h /usr/include/time.h \
+- /usr/include/x86_64-linux-gnu/sys/select.h \
+- /usr/include/x86_64-linux-gnu/bits/select.h \
+- /usr/include/x86_64-linux-gnu/bits/sigset.h \
+- /usr/include/x86_64-linux-gnu/bits/time.h \
+- /usr/include/x86_64-linux-gnu/sys/sysmacros.h \
+- /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h /usr/include/alloca.h \
+- /usr/include/x86_64-linux-gnu/bits/stdlib-float.h \
+- /usr/include/c++/4.8/cstring \
+- /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++config.h \
+- /usr/include/x86_64-linux-gnu/c++/4.8/bits/os_defines.h \
+- /usr/include/x86_64-linux-gnu/c++/4.8/bits/cpu_defines.h \
+- /usr/include/string.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/tgf.h \
+- /usr/include/x86_64-linux-gnu/sys/param.h \
+- /usr/lib/gcc/x86_64-linux-gnu/4.8/include-fixed/limits.h \
+- /usr/lib/gcc/x86_64-linux-gnu/4.8/include-fixed/syslimits.h \
+- /usr/include/limits.h /usr/include/x86_64-linux-gnu/bits/posix1_lim.h \
+- /usr/include/x86_64-linux-gnu/bits/local_lim.h \
+- /usr/include/linux/limits.h \
+- /usr/include/x86_64-linux-gnu/bits/posix2_lim.h \
+- /usr/include/x86_64-linux-gnu/bits/xopen_lim.h /usr/include/signal.h \
+- /usr/include/x86_64-linux-gnu/bits/signum.h \
+- /usr/include/x86_64-linux-gnu/bits/siginfo.h \
+- /usr/include/x86_64-linux-gnu/bits/sigaction.h \
+- /usr/include/x86_64-linux-gnu/bits/sigcontext.h \
+- /usr/include/x86_64-linux-gnu/bits/sigstack.h \
+- /usr/include/x86_64-linux-gnu/sys/ucontext.h \
+- /usr/include/x86_64-linux-gnu/bits/sigthread.h \
+- /usr/include/x86_64-linux-gnu/bits/param.h /usr/include/linux/param.h \
+- /usr/include/x86_64-linux-gnu/asm/param.h \
+- /usr/include/asm-generic/param.h /usr/include/assert.h \
+- /usr/include/math.h /usr/include/x86_64-linux-gnu/bits/huge_val.h \
+- /usr/include/x86_64-linux-gnu/bits/huge_valf.h \
+- /usr/include/x86_64-linux-gnu/bits/huge_vall.h \
+- /usr/include/x86_64-linux-gnu/bits/inf.h \
+- /usr/include/x86_64-linux-gnu/bits/nan.h \
+- /usr/include/x86_64-linux-gnu/bits/mathdef.h \
+- /usr/include/x86_64-linux-gnu/bits/mathcalls.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/osspec.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/track.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/linalg_t.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/v2_t.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/v3_t.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/v4_t.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/straight2_t.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/car.h \
+- /usr/include/plib/sg.h /usr/include/plib/ul.h /usr/include/ctype.h \
+- /usr/include/unistd.h /usr/include/x86_64-linux-gnu/bits/posix_opt.h \
+- /usr/include/x86_64-linux-gnu/bits/environments.h \
+- /usr/include/x86_64-linux-gnu/bits/confname.h /usr/include/getopt.h \
+- /usr/include/dlfcn.h /usr/include/x86_64-linux-gnu/bits/dlfcn.h \
+- /usr/include/fcntl.h /usr/include/x86_64-linux-gnu/bits/fcntl.h \
+- /usr/include/x86_64-linux-gnu/bits/fcntl-linux.h \
+- /usr/include/x86_64-linux-gnu/bits/uio.h \
+- /usr/include/x86_64-linux-gnu/bits/stat.h \
+- /usr/lib/gcc/x86_64-linux-gnu/4.8/include/float.h /usr/include/errno.h \
+- /usr/include/x86_64-linux-gnu/bits/errno.h /usr/include/linux/errno.h \
+- /usr/include/x86_64-linux-gnu/asm/errno.h \
+- /usr/include/asm-generic/errno.h /usr/include/asm-generic/errno-base.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/raceman.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/graphic.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/simu.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/robot.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/robottools.h \
+- spline.h trackdesc.h linalg.h mycar.h pathfinder.h \
+- /home/bst2017/zj/software/torcs-1.3.7/export/include/portability.h \
+- /home/bst2017/zj/software/torcs-1.3.7/config.h
+ spline.o: spline.cpp /usr/include/stdc-predef.h /usr/include/math.h \
+  /usr/include/features.h /usr/include/x86_64-linux-gnu/sys/cdefs.h \
+  /usr/include/x86_64-linux-gnu/bits/wordsize.h \
+diff --git a/src/drivers/berniw/berniw.cpp b/src/drivers/berniw/berniw.cpp
+index f1cc5a7..f3e5029 100644
+--- a/src/drivers/berniw/berniw.cpp
++++ b/src/drivers/berniw/berniw.cpp
+@@ -20,7 +20,7 @@
+ 
+ #include "berniw.h"
+ #include <portability.h>
+-
++//#include <sensors.h>
+ #ifdef DMALLOC
+ #include "dmalloc.h"
+ #endif
+diff --git a/src/libs/raceengineclient/.depend b/src/libs/raceengineclient/.depend
+index 941d7e3..a61568e 100644
+--- a/src/libs/raceengineclient/.depend
++++ b/src/libs/raceengineclient/.depend
+@@ -222,7 +222,22 @@ raceinit.o: raceinit.cpp /usr/include/stdc-predef.h /usr/include/stdlib.h \
+  /usr/include/c++/4.8/bits/stl_tree.h /usr/include/c++/4.8/bits/stl_map.h \
+  /usr/include/c++/4.8/bits/stl_multimap.h \
+  /home/bst2017/zj/software/torcs-1.3.7/export/include/musicplayer/musicplayer.h \
+- raceengine.h racemain.h racestate.h racegl.h raceresults.h raceinit.h
++ raceengine.h racemain.h racestate.h racegl.h raceresults.h raceinit.h \
++ /usr/include/c++/4.8/iostream /usr/include/c++/4.8/ostream \
++ /usr/include/c++/4.8/ios /usr/include/c++/4.8/bits/ios_base.h \
++ /usr/include/c++/4.8/bits/locale_classes.h \
++ /usr/include/c++/4.8/bits/locale_classes.tcc \
++ /usr/include/c++/4.8/streambuf /usr/include/c++/4.8/bits/streambuf.tcc \
++ /usr/include/c++/4.8/bits/basic_ios.h \
++ /usr/include/c++/4.8/bits/locale_facets.h /usr/include/c++/4.8/cwctype \
++ /usr/include/wctype.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/ctype_base.h \
++ /usr/include/c++/4.8/bits/streambuf_iterator.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/ctype_inline.h \
++ /usr/include/c++/4.8/bits/locale_facets.tcc \
++ /usr/include/c++/4.8/bits/basic_ios.tcc \
++ /usr/include/c++/4.8/bits/ostream.tcc /usr/include/c++/4.8/istream \
++ /usr/include/c++/4.8/bits/istream.tcc
+ racemain.o: racemain.cpp /usr/include/stdc-predef.h /usr/include/stdlib.h \
+  /usr/include/features.h /usr/include/x86_64-linux-gnu/sys/cdefs.h \
+  /usr/include/x86_64-linux-gnu/bits/wordsize.h \
+@@ -683,9 +698,10 @@ raceengine.o: raceengine.cpp /usr/include/stdc-predef.h \
+  /home/bst2017/zj/software/torcs-1.3.7/export/include/robottools.h \
+  /home/bst2017/zj/software/torcs-1.3.7/export/include/portability.h \
+  /home/bst2017/zj/software/torcs-1.3.7/config.h racemain.h racegl.h \
+- raceinit.h raceresults.h raceengine.h /usr/include/c++/4.8/iostream \
+- /usr/include/c++/4.8/ostream /usr/include/c++/4.8/ios \
+- /usr/include/c++/4.8/iosfwd /usr/include/c++/4.8/bits/stringfwd.h \
++ raceinit.h raceresults.h raceengine.h get_sensors.h \
++ /usr/include/c++/4.8/iostream /usr/include/c++/4.8/ostream \
++ /usr/include/c++/4.8/ios /usr/include/c++/4.8/iosfwd \
++ /usr/include/c++/4.8/bits/stringfwd.h \
+  /usr/include/c++/4.8/bits/memoryfwd.h \
+  /usr/include/c++/4.8/bits/postypes.h /usr/include/c++/4.8/cwchar \
+  /usr/include/c++/4.8/exception \
+@@ -738,8 +754,10 @@ raceengine.o: raceengine.cpp /usr/include/stdc-predef.h \
+  /usr/include/c++/4.8/bits/locale_facets.tcc \
+  /usr/include/c++/4.8/bits/basic_ios.tcc \
+  /usr/include/c++/4.8/bits/ostream.tcc /usr/include/c++/4.8/istream \
+- /usr/include/c++/4.8/bits/istream.tcc /usr/include/c++/4.8/cstdio \
+- /usr/include/c++/4.8/ctime
++ /usr/include/c++/4.8/bits/istream.tcc /usr/include/c++/4.8/sstream \
++ /usr/include/c++/4.8/bits/sstream.tcc /usr/include/c++/4.8/ctime \
++ sensors.h SimpleParser.h CarControl.h /usr/include/c++/4.8/cassert \
++ ObstacleSensors.h /usr/include/c++/4.8/cstdio
+ raceresults.o: raceresults.cpp /usr/include/stdc-predef.h \
+  /usr/include/stdlib.h /usr/include/features.h \
+  /usr/include/x86_64-linux-gnu/sys/cdefs.h \
+@@ -835,3 +853,464 @@ raceresults.o: raceresults.cpp /usr/include/stdc-predef.h \
+  /home/bst2017/zj/software/torcs-1.3.7/export/include/portability.h \
+  /home/bst2017/zj/software/torcs-1.3.7/config.h racemain.h racegl.h \
+  raceinit.h raceengine.h raceresults.h
++CarControl.o: CarControl.cpp /usr/include/stdc-predef.h CarControl.h \
++ /usr/include/c++/4.8/iostream \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++config.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/os_defines.h \
++ /usr/include/features.h /usr/include/x86_64-linux-gnu/sys/cdefs.h \
++ /usr/include/x86_64-linux-gnu/bits/wordsize.h \
++ /usr/include/x86_64-linux-gnu/gnu/stubs.h \
++ /usr/include/x86_64-linux-gnu/gnu/stubs-64.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/cpu_defines.h \
++ /usr/include/c++/4.8/ostream /usr/include/c++/4.8/ios \
++ /usr/include/c++/4.8/iosfwd /usr/include/c++/4.8/bits/stringfwd.h \
++ /usr/include/c++/4.8/bits/memoryfwd.h \
++ /usr/include/c++/4.8/bits/postypes.h /usr/include/c++/4.8/cwchar \
++ /usr/include/wchar.h /usr/include/stdio.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stdarg.h \
++ /usr/include/x86_64-linux-gnu/bits/wchar.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stddef.h \
++ /usr/include/xlocale.h /usr/include/c++/4.8/exception \
++ /usr/include/c++/4.8/bits/atomic_lockfree_defines.h \
++ /usr/include/c++/4.8/bits/char_traits.h \
++ /usr/include/c++/4.8/bits/stl_algobase.h \
++ /usr/include/c++/4.8/bits/functexcept.h \
++ /usr/include/c++/4.8/bits/exception_defines.h \
++ /usr/include/c++/4.8/bits/cpp_type_traits.h \
++ /usr/include/c++/4.8/ext/type_traits.h \
++ /usr/include/c++/4.8/ext/numeric_traits.h \
++ /usr/include/c++/4.8/bits/stl_pair.h /usr/include/c++/4.8/bits/move.h \
++ /usr/include/c++/4.8/bits/concept_check.h \
++ /usr/include/c++/4.8/bits/stl_iterator_base_types.h \
++ /usr/include/c++/4.8/bits/stl_iterator_base_funcs.h \
++ /usr/include/c++/4.8/debug/debug.h \
++ /usr/include/c++/4.8/bits/stl_iterator.h \
++ /usr/include/c++/4.8/bits/localefwd.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++locale.h \
++ /usr/include/c++/4.8/clocale /usr/include/locale.h \
++ /usr/include/x86_64-linux-gnu/bits/locale.h /usr/include/c++/4.8/cctype \
++ /usr/include/ctype.h /usr/include/x86_64-linux-gnu/bits/types.h \
++ /usr/include/x86_64-linux-gnu/bits/typesizes.h /usr/include/endian.h \
++ /usr/include/x86_64-linux-gnu/bits/endian.h \
++ /usr/include/x86_64-linux-gnu/bits/byteswap.h \
++ /usr/include/x86_64-linux-gnu/bits/byteswap-16.h \
++ /usr/include/c++/4.8/bits/ios_base.h \
++ /usr/include/c++/4.8/ext/atomicity.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/gthr.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/gthr-default.h \
++ /usr/include/pthread.h /usr/include/sched.h /usr/include/time.h \
++ /usr/include/x86_64-linux-gnu/bits/sched.h \
++ /usr/include/x86_64-linux-gnu/bits/time.h \
++ /usr/include/x86_64-linux-gnu/bits/timex.h \
++ /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h \
++ /usr/include/x86_64-linux-gnu/bits/setjmp.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/atomic_word.h \
++ /usr/include/c++/4.8/bits/locale_classes.h /usr/include/c++/4.8/string \
++ /usr/include/c++/4.8/bits/allocator.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++allocator.h \
++ /usr/include/c++/4.8/ext/new_allocator.h /usr/include/c++/4.8/new \
++ /usr/include/c++/4.8/bits/ostream_insert.h \
++ /usr/include/c++/4.8/bits/cxxabi_forced.h \
++ /usr/include/c++/4.8/bits/stl_function.h \
++ /usr/include/c++/4.8/backward/binders.h \
++ /usr/include/c++/4.8/bits/range_access.h \
++ /usr/include/c++/4.8/bits/basic_string.h \
++ /usr/include/c++/4.8/bits/basic_string.tcc \
++ /usr/include/c++/4.8/bits/locale_classes.tcc \
++ /usr/include/c++/4.8/streambuf /usr/include/c++/4.8/bits/streambuf.tcc \
++ /usr/include/c++/4.8/bits/basic_ios.h \
++ /usr/include/c++/4.8/bits/locale_facets.h /usr/include/c++/4.8/cwctype \
++ /usr/include/wctype.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/ctype_base.h \
++ /usr/include/c++/4.8/bits/streambuf_iterator.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/ctype_inline.h \
++ /usr/include/c++/4.8/bits/locale_facets.tcc \
++ /usr/include/c++/4.8/bits/basic_ios.tcc \
++ /usr/include/c++/4.8/bits/ostream.tcc /usr/include/c++/4.8/istream \
++ /usr/include/c++/4.8/bits/istream.tcc /usr/include/c++/4.8/sstream \
++ /usr/include/c++/4.8/bits/sstream.tcc /usr/include/c++/4.8/cstring \
++ /usr/include/string.h /usr/include/c++/4.8/cassert /usr/include/assert.h \
++ SimpleParser.h
++get_sensors.o: get_sensors.cpp /usr/include/stdc-predef.h get_sensors.h \
++ /usr/include/stdio.h /usr/include/features.h \
++ /usr/include/x86_64-linux-gnu/sys/cdefs.h \
++ /usr/include/x86_64-linux-gnu/bits/wordsize.h \
++ /usr/include/x86_64-linux-gnu/gnu/stubs.h \
++ /usr/include/x86_64-linux-gnu/gnu/stubs-64.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stddef.h \
++ /usr/include/x86_64-linux-gnu/bits/types.h \
++ /usr/include/x86_64-linux-gnu/bits/typesizes.h /usr/include/libio.h \
++ /usr/include/_G_config.h /usr/include/wchar.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stdarg.h \
++ /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
++ /usr/include/x86_64-linux-gnu/bits/sys_errlist.h /usr/include/stdlib.h \
++ /usr/include/x86_64-linux-gnu/bits/waitflags.h \
++ /usr/include/x86_64-linux-gnu/bits/waitstatus.h /usr/include/endian.h \
++ /usr/include/x86_64-linux-gnu/bits/endian.h \
++ /usr/include/x86_64-linux-gnu/bits/byteswap.h \
++ /usr/include/x86_64-linux-gnu/bits/byteswap-16.h /usr/include/xlocale.h \
++ /usr/include/x86_64-linux-gnu/sys/types.h /usr/include/time.h \
++ /usr/include/x86_64-linux-gnu/sys/select.h \
++ /usr/include/x86_64-linux-gnu/bits/select.h \
++ /usr/include/x86_64-linux-gnu/bits/sigset.h \
++ /usr/include/x86_64-linux-gnu/bits/time.h \
++ /usr/include/x86_64-linux-gnu/sys/sysmacros.h \
++ /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h /usr/include/alloca.h \
++ /usr/include/x86_64-linux-gnu/bits/stdlib-float.h /usr/include/string.h \
++ /usr/include/math.h /usr/include/x86_64-linux-gnu/bits/huge_val.h \
++ /usr/include/x86_64-linux-gnu/bits/huge_valf.h \
++ /usr/include/x86_64-linux-gnu/bits/huge_vall.h \
++ /usr/include/x86_64-linux-gnu/bits/inf.h \
++ /usr/include/x86_64-linux-gnu/bits/nan.h \
++ /usr/include/x86_64-linux-gnu/bits/mathdef.h \
++ /usr/include/x86_64-linux-gnu/bits/mathcalls.h \
++ /usr/include/c++/4.8/iostream \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++config.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/os_defines.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/cpu_defines.h \
++ /usr/include/c++/4.8/ostream /usr/include/c++/4.8/ios \
++ /usr/include/c++/4.8/iosfwd /usr/include/c++/4.8/bits/stringfwd.h \
++ /usr/include/c++/4.8/bits/memoryfwd.h \
++ /usr/include/c++/4.8/bits/postypes.h /usr/include/c++/4.8/cwchar \
++ /usr/include/x86_64-linux-gnu/bits/wchar.h \
++ /usr/include/c++/4.8/exception \
++ /usr/include/c++/4.8/bits/atomic_lockfree_defines.h \
++ /usr/include/c++/4.8/bits/char_traits.h \
++ /usr/include/c++/4.8/bits/stl_algobase.h \
++ /usr/include/c++/4.8/bits/functexcept.h \
++ /usr/include/c++/4.8/bits/exception_defines.h \
++ /usr/include/c++/4.8/bits/cpp_type_traits.h \
++ /usr/include/c++/4.8/ext/type_traits.h \
++ /usr/include/c++/4.8/ext/numeric_traits.h \
++ /usr/include/c++/4.8/bits/stl_pair.h /usr/include/c++/4.8/bits/move.h \
++ /usr/include/c++/4.8/bits/concept_check.h \
++ /usr/include/c++/4.8/bits/stl_iterator_base_types.h \
++ /usr/include/c++/4.8/bits/stl_iterator_base_funcs.h \
++ /usr/include/c++/4.8/debug/debug.h \
++ /usr/include/c++/4.8/bits/stl_iterator.h \
++ /usr/include/c++/4.8/bits/localefwd.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++locale.h \
++ /usr/include/c++/4.8/clocale /usr/include/locale.h \
++ /usr/include/x86_64-linux-gnu/bits/locale.h /usr/include/c++/4.8/cctype \
++ /usr/include/ctype.h /usr/include/c++/4.8/bits/ios_base.h \
++ /usr/include/c++/4.8/ext/atomicity.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/gthr.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/gthr-default.h \
++ /usr/include/pthread.h /usr/include/sched.h \
++ /usr/include/x86_64-linux-gnu/bits/sched.h \
++ /usr/include/x86_64-linux-gnu/bits/timex.h \
++ /usr/include/x86_64-linux-gnu/bits/setjmp.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/atomic_word.h \
++ /usr/include/c++/4.8/bits/locale_classes.h /usr/include/c++/4.8/string \
++ /usr/include/c++/4.8/bits/allocator.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++allocator.h \
++ /usr/include/c++/4.8/ext/new_allocator.h /usr/include/c++/4.8/new \
++ /usr/include/c++/4.8/bits/ostream_insert.h \
++ /usr/include/c++/4.8/bits/cxxabi_forced.h \
++ /usr/include/c++/4.8/bits/stl_function.h \
++ /usr/include/c++/4.8/backward/binders.h \
++ /usr/include/c++/4.8/bits/range_access.h \
++ /usr/include/c++/4.8/bits/basic_string.h \
++ /usr/include/c++/4.8/bits/basic_string.tcc \
++ /usr/include/c++/4.8/bits/locale_classes.tcc \
++ /usr/include/c++/4.8/streambuf /usr/include/c++/4.8/bits/streambuf.tcc \
++ /usr/include/c++/4.8/bits/basic_ios.h \
++ /usr/include/c++/4.8/bits/locale_facets.h /usr/include/c++/4.8/cwctype \
++ /usr/include/wctype.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/ctype_base.h \
++ /usr/include/c++/4.8/bits/streambuf_iterator.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/ctype_inline.h \
++ /usr/include/c++/4.8/bits/locale_facets.tcc \
++ /usr/include/c++/4.8/bits/basic_ios.tcc \
++ /usr/include/c++/4.8/bits/ostream.tcc /usr/include/c++/4.8/istream \
++ /usr/include/c++/4.8/bits/istream.tcc /usr/include/c++/4.8/sstream \
++ /usr/include/c++/4.8/bits/sstream.tcc /usr/include/c++/4.8/ctime \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tgf.h \
++ /usr/include/x86_64-linux-gnu/sys/param.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include-fixed/limits.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include-fixed/syslimits.h \
++ /usr/include/limits.h /usr/include/x86_64-linux-gnu/bits/posix1_lim.h \
++ /usr/include/x86_64-linux-gnu/bits/local_lim.h \
++ /usr/include/linux/limits.h \
++ /usr/include/x86_64-linux-gnu/bits/posix2_lim.h \
++ /usr/include/x86_64-linux-gnu/bits/xopen_lim.h /usr/include/signal.h \
++ /usr/include/x86_64-linux-gnu/bits/signum.h \
++ /usr/include/x86_64-linux-gnu/bits/siginfo.h \
++ /usr/include/x86_64-linux-gnu/bits/sigaction.h \
++ /usr/include/x86_64-linux-gnu/bits/sigcontext.h \
++ /usr/include/x86_64-linux-gnu/bits/sigstack.h \
++ /usr/include/x86_64-linux-gnu/sys/ucontext.h \
++ /usr/include/x86_64-linux-gnu/bits/sigthread.h \
++ /usr/include/x86_64-linux-gnu/bits/param.h /usr/include/linux/param.h \
++ /usr/include/x86_64-linux-gnu/asm/param.h \
++ /usr/include/asm-generic/param.h /usr/include/assert.h \
++ /usr/include/c++/4.8/cstring \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/osspec.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/track.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/linalg_t.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/v2_t.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/v3_t.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/v4_t.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/straight2_t.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/car.h \
++ /usr/include/plib/sg.h /usr/include/plib/ul.h /usr/include/unistd.h \
++ /usr/include/x86_64-linux-gnu/bits/posix_opt.h \
++ /usr/include/x86_64-linux-gnu/bits/environments.h \
++ /usr/include/x86_64-linux-gnu/bits/confname.h /usr/include/getopt.h \
++ /usr/include/dlfcn.h /usr/include/x86_64-linux-gnu/bits/dlfcn.h \
++ /usr/include/fcntl.h /usr/include/x86_64-linux-gnu/bits/fcntl.h \
++ /usr/include/x86_64-linux-gnu/bits/fcntl-linux.h \
++ /usr/include/x86_64-linux-gnu/bits/uio.h \
++ /usr/include/x86_64-linux-gnu/bits/stat.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/float.h /usr/include/errno.h \
++ /usr/include/x86_64-linux-gnu/bits/errno.h /usr/include/linux/errno.h \
++ /usr/include/x86_64-linux-gnu/asm/errno.h \
++ /usr/include/asm-generic/errno.h /usr/include/asm-generic/errno-base.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/raceman.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/graphic.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/simu.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/robottools.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/robot.h sensors.h \
++ SimpleParser.h CarControl.h /usr/include/c++/4.8/cassert \
++ ObstacleSensors.h
++ObstacleSensors.o: ObstacleSensors.cpp /usr/include/stdc-predef.h \
++ ObstacleSensors.h /usr/include/stdio.h /usr/include/features.h \
++ /usr/include/x86_64-linux-gnu/sys/cdefs.h \
++ /usr/include/x86_64-linux-gnu/bits/wordsize.h \
++ /usr/include/x86_64-linux-gnu/gnu/stubs.h \
++ /usr/include/x86_64-linux-gnu/gnu/stubs-64.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stddef.h \
++ /usr/include/x86_64-linux-gnu/bits/types.h \
++ /usr/include/x86_64-linux-gnu/bits/typesizes.h /usr/include/libio.h \
++ /usr/include/_G_config.h /usr/include/wchar.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stdarg.h \
++ /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
++ /usr/include/x86_64-linux-gnu/bits/sys_errlist.h /usr/include/math.h \
++ /usr/include/x86_64-linux-gnu/bits/huge_val.h \
++ /usr/include/x86_64-linux-gnu/bits/huge_valf.h \
++ /usr/include/x86_64-linux-gnu/bits/huge_vall.h \
++ /usr/include/x86_64-linux-gnu/bits/inf.h \
++ /usr/include/x86_64-linux-gnu/bits/nan.h \
++ /usr/include/x86_64-linux-gnu/bits/mathdef.h \
++ /usr/include/x86_64-linux-gnu/bits/mathcalls.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/car.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/track.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tgf.h \
++ /usr/include/x86_64-linux-gnu/sys/param.h \
++ /usr/include/x86_64-linux-gnu/sys/types.h /usr/include/time.h \
++ /usr/include/endian.h /usr/include/x86_64-linux-gnu/bits/endian.h \
++ /usr/include/x86_64-linux-gnu/bits/byteswap.h \
++ /usr/include/x86_64-linux-gnu/bits/byteswap-16.h \
++ /usr/include/x86_64-linux-gnu/sys/select.h \
++ /usr/include/x86_64-linux-gnu/bits/select.h \
++ /usr/include/x86_64-linux-gnu/bits/sigset.h \
++ /usr/include/x86_64-linux-gnu/bits/time.h \
++ /usr/include/x86_64-linux-gnu/sys/sysmacros.h \
++ /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include-fixed/limits.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include-fixed/syslimits.h \
++ /usr/include/limits.h /usr/include/x86_64-linux-gnu/bits/posix1_lim.h \
++ /usr/include/x86_64-linux-gnu/bits/local_lim.h \
++ /usr/include/linux/limits.h \
++ /usr/include/x86_64-linux-gnu/bits/posix2_lim.h \
++ /usr/include/x86_64-linux-gnu/bits/xopen_lim.h /usr/include/signal.h \
++ /usr/include/x86_64-linux-gnu/bits/signum.h \
++ /usr/include/x86_64-linux-gnu/bits/siginfo.h \
++ /usr/include/x86_64-linux-gnu/bits/sigaction.h \
++ /usr/include/x86_64-linux-gnu/bits/sigcontext.h \
++ /usr/include/x86_64-linux-gnu/bits/sigstack.h \
++ /usr/include/x86_64-linux-gnu/sys/ucontext.h \
++ /usr/include/x86_64-linux-gnu/bits/sigthread.h \
++ /usr/include/x86_64-linux-gnu/bits/param.h /usr/include/linux/param.h \
++ /usr/include/x86_64-linux-gnu/asm/param.h \
++ /usr/include/asm-generic/param.h /usr/include/assert.h \
++ /usr/include/stdlib.h /usr/include/x86_64-linux-gnu/bits/waitflags.h \
++ /usr/include/x86_64-linux-gnu/bits/waitstatus.h /usr/include/xlocale.h \
++ /usr/include/alloca.h /usr/include/x86_64-linux-gnu/bits/stdlib-float.h \
++ /usr/include/c++/4.8/cstring \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++config.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/os_defines.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/cpu_defines.h \
++ /usr/include/string.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/osspec.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/linalg_t.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/v2_t.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/v3_t.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/v4_t.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/straight2_t.h \
++ /usr/include/plib/sg.h /usr/include/plib/ul.h /usr/include/ctype.h \
++ /usr/include/unistd.h /usr/include/x86_64-linux-gnu/bits/posix_opt.h \
++ /usr/include/x86_64-linux-gnu/bits/environments.h \
++ /usr/include/x86_64-linux-gnu/bits/confname.h /usr/include/getopt.h \
++ /usr/include/dlfcn.h /usr/include/x86_64-linux-gnu/bits/dlfcn.h \
++ /usr/include/fcntl.h /usr/include/x86_64-linux-gnu/bits/fcntl.h \
++ /usr/include/x86_64-linux-gnu/bits/fcntl-linux.h \
++ /usr/include/x86_64-linux-gnu/bits/uio.h \
++ /usr/include/x86_64-linux-gnu/bits/stat.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/float.h /usr/include/errno.h \
++ /usr/include/x86_64-linux-gnu/bits/errno.h /usr/include/linux/errno.h \
++ /usr/include/x86_64-linux-gnu/asm/errno.h \
++ /usr/include/asm-generic/errno.h /usr/include/asm-generic/errno-base.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/robottools.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/raceman.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/graphic.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/simu.h
++sensors.o: sensors.cpp /usr/include/stdc-predef.h sensors.h \
++ /usr/include/stdio.h /usr/include/features.h \
++ /usr/include/x86_64-linux-gnu/sys/cdefs.h \
++ /usr/include/x86_64-linux-gnu/bits/wordsize.h \
++ /usr/include/x86_64-linux-gnu/gnu/stubs.h \
++ /usr/include/x86_64-linux-gnu/gnu/stubs-64.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stddef.h \
++ /usr/include/x86_64-linux-gnu/bits/types.h \
++ /usr/include/x86_64-linux-gnu/bits/typesizes.h /usr/include/libio.h \
++ /usr/include/_G_config.h /usr/include/wchar.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stdarg.h \
++ /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
++ /usr/include/x86_64-linux-gnu/bits/sys_errlist.h /usr/include/math.h \
++ /usr/include/x86_64-linux-gnu/bits/huge_val.h \
++ /usr/include/x86_64-linux-gnu/bits/huge_valf.h \
++ /usr/include/x86_64-linux-gnu/bits/huge_vall.h \
++ /usr/include/x86_64-linux-gnu/bits/inf.h \
++ /usr/include/x86_64-linux-gnu/bits/nan.h \
++ /usr/include/x86_64-linux-gnu/bits/mathdef.h \
++ /usr/include/x86_64-linux-gnu/bits/mathcalls.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/car.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/track.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tgf.h \
++ /usr/include/x86_64-linux-gnu/sys/param.h \
++ /usr/include/x86_64-linux-gnu/sys/types.h /usr/include/time.h \
++ /usr/include/endian.h /usr/include/x86_64-linux-gnu/bits/endian.h \
++ /usr/include/x86_64-linux-gnu/bits/byteswap.h \
++ /usr/include/x86_64-linux-gnu/bits/byteswap-16.h \
++ /usr/include/x86_64-linux-gnu/sys/select.h \
++ /usr/include/x86_64-linux-gnu/bits/select.h \
++ /usr/include/x86_64-linux-gnu/bits/sigset.h \
++ /usr/include/x86_64-linux-gnu/bits/time.h \
++ /usr/include/x86_64-linux-gnu/sys/sysmacros.h \
++ /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include-fixed/limits.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include-fixed/syslimits.h \
++ /usr/include/limits.h /usr/include/x86_64-linux-gnu/bits/posix1_lim.h \
++ /usr/include/x86_64-linux-gnu/bits/local_lim.h \
++ /usr/include/linux/limits.h \
++ /usr/include/x86_64-linux-gnu/bits/posix2_lim.h \
++ /usr/include/x86_64-linux-gnu/bits/xopen_lim.h /usr/include/signal.h \
++ /usr/include/x86_64-linux-gnu/bits/signum.h \
++ /usr/include/x86_64-linux-gnu/bits/siginfo.h \
++ /usr/include/x86_64-linux-gnu/bits/sigaction.h \
++ /usr/include/x86_64-linux-gnu/bits/sigcontext.h \
++ /usr/include/x86_64-linux-gnu/bits/sigstack.h \
++ /usr/include/x86_64-linux-gnu/sys/ucontext.h \
++ /usr/include/x86_64-linux-gnu/bits/sigthread.h \
++ /usr/include/x86_64-linux-gnu/bits/param.h /usr/include/linux/param.h \
++ /usr/include/x86_64-linux-gnu/asm/param.h \
++ /usr/include/asm-generic/param.h /usr/include/assert.h \
++ /usr/include/stdlib.h /usr/include/x86_64-linux-gnu/bits/waitflags.h \
++ /usr/include/x86_64-linux-gnu/bits/waitstatus.h /usr/include/xlocale.h \
++ /usr/include/alloca.h /usr/include/x86_64-linux-gnu/bits/stdlib-float.h \
++ /usr/include/c++/4.8/cstring \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++config.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/os_defines.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/cpu_defines.h \
++ /usr/include/string.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/osspec.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/linalg_t.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/v2_t.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/v3_t.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/v4_t.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/tmath/straight2_t.h \
++ /usr/include/plib/sg.h /usr/include/plib/ul.h /usr/include/ctype.h \
++ /usr/include/unistd.h /usr/include/x86_64-linux-gnu/bits/posix_opt.h \
++ /usr/include/x86_64-linux-gnu/bits/environments.h \
++ /usr/include/x86_64-linux-gnu/bits/confname.h /usr/include/getopt.h \
++ /usr/include/dlfcn.h /usr/include/x86_64-linux-gnu/bits/dlfcn.h \
++ /usr/include/fcntl.h /usr/include/x86_64-linux-gnu/bits/fcntl.h \
++ /usr/include/x86_64-linux-gnu/bits/fcntl-linux.h \
++ /usr/include/x86_64-linux-gnu/bits/uio.h \
++ /usr/include/x86_64-linux-gnu/bits/stat.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/float.h /usr/include/errno.h \
++ /usr/include/x86_64-linux-gnu/bits/errno.h /usr/include/linux/errno.h \
++ /usr/include/x86_64-linux-gnu/asm/errno.h \
++ /usr/include/asm-generic/errno.h /usr/include/asm-generic/errno-base.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/robottools.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/raceman.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/graphic.h \
++ /home/bst2017/zj/software/torcs-1.3.7/export/include/simu.h
++SimpleParser.o: SimpleParser.cpp /usr/include/stdc-predef.h \
++ SimpleParser.h /usr/include/c++/4.8/iostream \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++config.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/os_defines.h \
++ /usr/include/features.h /usr/include/x86_64-linux-gnu/sys/cdefs.h \
++ /usr/include/x86_64-linux-gnu/bits/wordsize.h \
++ /usr/include/x86_64-linux-gnu/gnu/stubs.h \
++ /usr/include/x86_64-linux-gnu/gnu/stubs-64.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/cpu_defines.h \
++ /usr/include/c++/4.8/ostream /usr/include/c++/4.8/ios \
++ /usr/include/c++/4.8/iosfwd /usr/include/c++/4.8/bits/stringfwd.h \
++ /usr/include/c++/4.8/bits/memoryfwd.h \
++ /usr/include/c++/4.8/bits/postypes.h /usr/include/c++/4.8/cwchar \
++ /usr/include/wchar.h /usr/include/stdio.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stdarg.h \
++ /usr/include/x86_64-linux-gnu/bits/wchar.h \
++ /usr/lib/gcc/x86_64-linux-gnu/4.8/include/stddef.h \
++ /usr/include/xlocale.h /usr/include/c++/4.8/exception \
++ /usr/include/c++/4.8/bits/atomic_lockfree_defines.h \
++ /usr/include/c++/4.8/bits/char_traits.h \
++ /usr/include/c++/4.8/bits/stl_algobase.h \
++ /usr/include/c++/4.8/bits/functexcept.h \
++ /usr/include/c++/4.8/bits/exception_defines.h \
++ /usr/include/c++/4.8/bits/cpp_type_traits.h \
++ /usr/include/c++/4.8/ext/type_traits.h \
++ /usr/include/c++/4.8/ext/numeric_traits.h \
++ /usr/include/c++/4.8/bits/stl_pair.h /usr/include/c++/4.8/bits/move.h \
++ /usr/include/c++/4.8/bits/concept_check.h \
++ /usr/include/c++/4.8/bits/stl_iterator_base_types.h \
++ /usr/include/c++/4.8/bits/stl_iterator_base_funcs.h \
++ /usr/include/c++/4.8/debug/debug.h \
++ /usr/include/c++/4.8/bits/stl_iterator.h \
++ /usr/include/c++/4.8/bits/localefwd.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++locale.h \
++ /usr/include/c++/4.8/clocale /usr/include/locale.h \
++ /usr/include/x86_64-linux-gnu/bits/locale.h /usr/include/c++/4.8/cctype \
++ /usr/include/ctype.h /usr/include/x86_64-linux-gnu/bits/types.h \
++ /usr/include/x86_64-linux-gnu/bits/typesizes.h /usr/include/endian.h \
++ /usr/include/x86_64-linux-gnu/bits/endian.h \
++ /usr/include/x86_64-linux-gnu/bits/byteswap.h \
++ /usr/include/x86_64-linux-gnu/bits/byteswap-16.h \
++ /usr/include/c++/4.8/bits/ios_base.h \
++ /usr/include/c++/4.8/ext/atomicity.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/gthr.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/gthr-default.h \
++ /usr/include/pthread.h /usr/include/sched.h /usr/include/time.h \
++ /usr/include/x86_64-linux-gnu/bits/sched.h \
++ /usr/include/x86_64-linux-gnu/bits/time.h \
++ /usr/include/x86_64-linux-gnu/bits/timex.h \
++ /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h \
++ /usr/include/x86_64-linux-gnu/bits/setjmp.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/atomic_word.h \
++ /usr/include/c++/4.8/bits/locale_classes.h /usr/include/c++/4.8/string \
++ /usr/include/c++/4.8/bits/allocator.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++allocator.h \
++ /usr/include/c++/4.8/ext/new_allocator.h /usr/include/c++/4.8/new \
++ /usr/include/c++/4.8/bits/ostream_insert.h \
++ /usr/include/c++/4.8/bits/cxxabi_forced.h \
++ /usr/include/c++/4.8/bits/stl_function.h \
++ /usr/include/c++/4.8/backward/binders.h \
++ /usr/include/c++/4.8/bits/range_access.h \
++ /usr/include/c++/4.8/bits/basic_string.h \
++ /usr/include/c++/4.8/bits/basic_string.tcc \
++ /usr/include/c++/4.8/bits/locale_classes.tcc \
++ /usr/include/c++/4.8/streambuf /usr/include/c++/4.8/bits/streambuf.tcc \
++ /usr/include/c++/4.8/bits/basic_ios.h \
++ /usr/include/c++/4.8/bits/locale_facets.h /usr/include/c++/4.8/cwctype \
++ /usr/include/wctype.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/ctype_base.h \
++ /usr/include/c++/4.8/bits/streambuf_iterator.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/ctype_inline.h \
++ /usr/include/c++/4.8/bits/locale_facets.tcc \
++ /usr/include/c++/4.8/bits/basic_ios.tcc \
++ /usr/include/c++/4.8/bits/ostream.tcc /usr/include/c++/4.8/istream \
++ /usr/include/c++/4.8/bits/istream.tcc /usr/include/c++/4.8/sstream \
++ /usr/include/c++/4.8/bits/sstream.tcc /usr/include/c++/4.8/cstring \
++ /usr/include/string.h
+diff --git a/src/libs/raceengineclient/CarControl.cpp b/src/libs/raceengineclient/CarControl.cpp
+new file mode 100644
+index 0000000..5681827
+--- /dev/null
++++ b/src/libs/raceengineclient/CarControl.cpp
+@@ -0,0 +1,167 @@
++/***************************************************************************
++ 
++    file                 : CarControl.cpp
++    copyright            : (C) 2007 Daniele Loiacono
++ 
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++#include "CarControl.h"
++
++// meta-command value for race restart
++int CarControl::META_RESTART=1;
++
++CarControl::CarControl(float accel, float brake, int gear, float steer, float clutch, int focus, int meta)
++{
++	this->accel = accel;
++	this->brake = brake;
++	this->gear  = gear;
++	this->steer = steer;
++	this->clutch = clutch;
++	this->focus = focus;
++	this->meta = meta;
++}
++
++CarControl::CarControl(float accel, float brake, int gear, float steer, float clutch, int focus)
++{
++	this->accel = accel;
++	this->brake = brake;
++	this->gear  = gear;
++	this->steer = steer;
++	this->clutch = clutch;
++	this->focus = focus;
++	this->meta = 0;
++}
++
++CarControl::CarControl(string sensors)
++{
++        fromString(sensors);
++}
++
++string 
++CarControl::toString()
++{
++	string str;
++	
++	str  = SimpleParser::stringify("accel", accel);
++	str += SimpleParser::stringify("brake", brake);
++	str += SimpleParser::stringify("gear",  gear);
++	str += SimpleParser::stringify("steer", steer);
++	str += SimpleParser::stringify("clutch", clutch);
++	str += SimpleParser::stringify("focus",  focus);
++	str += SimpleParser::stringify("meta", meta);
++	
++	return str;	
++}
++
++void 
++CarControl::fromString(string sensors)
++{
++	if (SimpleParser::parse(sensors, "accel", accel)==false)
++		accel=0.0;
++	if (SimpleParser::parse(sensors, "brake", brake)==false)
++		brake=0.0;
++	if (SimpleParser::parse(sensors, "gear",  gear)==false)
++		gear=1;
++	if (SimpleParser::parse(sensors, "steer", steer)==false)
++		steer=0.0;
++	if (SimpleParser::parse(sensors, "clutch", clutch)==false)
++			clutch=0.0;
++	if (SimpleParser::parse(sensors, "meta", meta)==false)
++		meta=0;
++	if (SimpleParser::parse(sensors, "focus", focus)==false) //ML
++		focus=0; //ML
++	if (focus < -90 || focus > 90)//ML What to do with focus requests out of allowed range?
++		focus=360;//ML A value of 360 is used for not requesting focus readings; -1 is returned as focus reading to the client
++}
++
++float 
++CarControl::getAccel() const
++{
++        return this->accel;
++};
++
++void 
++CarControl::setAccel (float accel)
++{
++        this->accel = accel;
++};
++
++float 
++CarControl::getBrake() const
++{
++        return this->brake;
++};
++
++void 
++CarControl::setBrake (float brake)
++{
++        this->brake = brake;
++};
++
++int
++CarControl::getGear() const
++{
++        return this->gear;
++};
++
++void 
++CarControl::setGear(int gear)
++{
++        this->gear = gear;
++};
++
++float 
++CarControl::getSteer() const
++{
++        return this->steer;
++};
++
++void 
++CarControl::setSteer(float steer)
++{
++        this->steer = steer;
++};
++
++int
++CarControl::getMeta() const
++{
++        return this->meta;
++};
++
++void 
++CarControl::setMeta(int meta)
++{
++        this->meta = meta;
++};
++
++float
++CarControl::getClutch() const
++{
++       return clutch;
++}
++
++void
++CarControl::setClutch(float clutch)
++{
++       this->clutch = clutch;
++}
++
++int
++CarControl::getFocus()
++{ 
++        return this->focus;
++};
++
++void
++CarControl::setFocus(int focus)
++{ 
++        this->focus = focus;
++};
+diff --git a/src/libs/raceengineclient/CarControl.h b/src/libs/raceengineclient/CarControl.h
+new file mode 100644
+index 0000000..aff086a
+--- /dev/null
++++ b/src/libs/raceengineclient/CarControl.h
+@@ -0,0 +1,100 @@
++/***************************************************************************
++ 
++    file                 : CarControl.h
++    copyright            : (C) 2007 Daniele Loiacono
++ 
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++#ifndef CARCONTROL_H_
++#define CARCONTROL_H_
++
++#include <iostream>
++#include <sstream>
++#include <cstring>
++#include <cassert>
++#include "SimpleParser.h"
++
++using namespace std;
++
++class CarControl
++{
++private:
++
++        // Accelerate command [0,1]
++        float accel;
++
++        // Brake command [
++        float brake;
++
++        // Gear command
++        int gear;
++        
++        // Steering command [-1,1]
++        float steer;
++        
++        // Clutch command [0,1]
++        float clutch;
++
++        // meta-command
++        int meta;
++
++  		// focus command [-90,90], i.e. angle of track sensor focus desired by client
++		int focus;
++
++public:
++
++        CarControl(){};
++
++        CarControl(string sensors);
++
++        CarControl(float accel, float brake, int gear, float steer, float clutch, int focus, int meta);
++        CarControl(float accel, float brake, int gear, float steer, float clutch, int focus);
++
++        string toString();
++
++        void fromString(string sensors);
++
++        /* Getter and setter methods */
++
++        float getAccel() const;
++        
++        void setAccel (float accel);
++        
++        float getBrake() const;
++        
++        void setBrake (float brake);
++        
++        int getGear() const;
++        
++        void setGear(int gear);
++        
++        float getSteer() const;
++        
++        void setSteer(float steer);  
++        
++        int getMeta() const;
++        
++        void setMeta(int gear);
++
++        float getClutch() const;
++
++        void setClutch(float clutch);
++
++		int getFocus();
++
++		void setFocus(int focus);
++
++        // meta-command value for race restart
++        static int META_RESTART;
++
++};
++
++#endif /*CARCONTROL_H_*/
+diff --git a/src/libs/raceengineclient/Makefile b/src/libs/raceengineclient/Makefile
+index 29c8f21..181a60a 100644
+--- a/src/libs/raceengineclient/Makefile
++++ b/src/libs/raceengineclient/Makefile
+@@ -20,8 +20,11 @@ SOLIBRARY    = libraceengine.so
+ 
+ SOLIBDIR     = .
+ 
++#CUSTOMSRC	= ../../../custom/custom_source/get_sensors.cpp
++
+ SOURCES      = singleplayer.cpp raceinit.cpp racemain.cpp racemanmenu.cpp racestate.cpp racegl.cpp \
+-	       raceengine.cpp raceresults.cpp
++	        raceengine.cpp raceresults.cpp CarControl.cpp  get_sensors.cpp   ObstacleSensors.cpp  sensors.cpp  SimpleParser.cpp
++
+ 
+ SOLIBS      = -lracescreens -lrobottools
+ 
+diff --git a/src/libs/raceengineclient/ObstacleSensors.cpp b/src/libs/raceengineclient/ObstacleSensors.cpp
+new file mode 100644
+index 0000000..0a3cc3b
+--- /dev/null
++++ b/src/libs/raceengineclient/ObstacleSensors.cpp
+@@ -0,0 +1,194 @@
++/***************************************************************************
++ 
++    file                 : ObstacleSensors.cpp
++    copyright            : (C) 2008 Lugi Cardamone, Daniele Loiacono, Matteo Verzola
++						   (C) 2013 Wolf-Dieter Beelitz
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++//#define __DEBUG_OPP_SENS__
++
++
++#include "ObstacleSensors.h"
++
++void SingleObstacleSensor::init(tCarElt *car,double start_angle, double angle_covered,double range)
++{
++	this->car = car;
++	sensor_range=range;
++	sensor_angle_covered = angle_covered; 
++	sensor_angle_start = start_angle;
++	sensor_out=0;   //value ranges from 0 to 1: 0="No obstacle in sight" 1="Obstacle too close (collision)!"
++		
++}
++
++void SingleObstacleSensor::setSingleObstacleSensor(double sens_value)
++{
++	sensor_out=sens_value;
++}
++
++ObstacleSensors::ObstacleSensors(int sensors_number, tTrack* track, tCarElt* car, tSituation *situation, int range )
++{
++	sensors_num=sensors_number;
++	anglePerSensor = 360.0 / (double)sensors_number; 
++	obstacles_in_range = new Obstacle[situation->_ncars];
++
++	all_obstacles = new Obstacle[situation->_ncars];
++	
++	sensors = new SingleObstacleSensor[sensors_number];
++
++	for (int i = 0; i < sensors_number; i++) {
++		sensors[i].init(car,i*anglePerSensor, anglePerSensor, range);
++
++	}
++
++	myc = car;
++	sensorsRange= range;
++	
++}
++
++ObstacleSensors::~ObstacleSensors()
++{
++	delete [] sensors;
++	delete [] obstacles_in_range;
++	delete [] all_obstacles;
++}
++
++double ObstacleSensors::getObstacleSensorOut(int sensor_id)
++{
++	return sensors[sensor_id].getSingleObstacleSensorOut();
++}
++
++void ObstacleSensors::sensors_update(tSituation *situation)
++{
++	
++	for (int i = 0; i < situation->_ncars && situation->_ncars != 1; i++) 
++	{
++		// Compute the distance between my car and the opponent in the (x,y) space 
++		all_obstacles[i].dist_horiz = myc->pub.DynGC.pos.x - situation->cars[i]->pub.DynGC.pos.x;
++		all_obstacles[i].dist_vert = myc->pub.DynGC.pos.y - situation->cars[i]->pub.DynGC.pos.y;
++		// Compute distance as the crow flies 
++		all_obstacles[i].dist = sqrt(pow(all_obstacles[i].dist_vert,2) + pow(all_obstacles[i].dist_horiz,2));
++	}
++
++	/* Remove the opponents out the sensor range (to avoid useless computation) */
++	int j=0;  
++	for(int i=0; i< situation->_ncars && situation->_ncars != 1; i++)
++	{		
++		if(all_obstacles[i].dist < sensorsRange && all_obstacles[i].dist > 0)
++		{
++			obstacles_in_range[j].dist_vert = all_obstacles[i].dist_vert;
++			obstacles_in_range[j].dist_horiz = all_obstacles[i].dist_horiz;
++			obstacles_in_range[j].dist = all_obstacles[i].dist;
++			j++;
++		}
++	}
++
++	/* Initizialization of sensors */
++	for(int i=0; i<sensors_num; i++)
++	{
++		sensors[i].setSingleObstacleSensor( sensorsRange );
++	}
++
++	for(int i=0; i<j; i++) 
++	{		
++
++			
++		/* Compute the absolute angle, i.e., the angle between car and opponent w.r.t. (x,y) axis */
++		float deltax = (float) -obstacles_in_range[i].dist_horiz;
++		float deltay = (float) -obstacles_in_range[i].dist_vert;
++
++		double abs_angle;
++		if (deltax >=0 && deltay >=0)
++			abs_angle=atan(deltay/deltax)* 180 / PI;
++		if (deltax <0 && deltay >=0)
++			abs_angle=180 + atan(deltay/deltax)* 180 / PI;
++		if (deltax <0 && deltay <0)
++			abs_angle=-180+atan(deltay/deltax)* 180 / PI;			
++		if (deltax >=0 && deltay <0)
++			abs_angle=atan(deltay/deltax)* 180 / PI;	
++		
++		// Angle between the car w.r.t. to the x axis
++		double relative_angle = myc->_yaw*180/PI;
++
++		// Angle between the car and the opponent w.r.t. to the car axis (normalized between -180 and +180)
++		double car_angle = (relative_angle - abs_angle);
++		if (car_angle>=180)
++			car_angle-=360;
++		if (car_angle<=-180)
++			car_angle+=360;
++
++		/* Angle used by the opponent sensors, i.e. the car_angle mapped to [0,360] range*/
++		double sensor_angle = 180 + car_angle;
++
++		
++#ifdef __DEBUG_OPP_SENS__
++		printf("deltax: %f deltay: %f abs_angle: %f rel_angle: %f car_angle: %g sensor_angle: %f\n", 	
++						deltax,deltay,abs_angle,relative_angle,car_angle, sensor_angle);
++
++
++#endif
++		/* Compute in which opponent sensor the opponent perceived falls */
++		int position;  
++		position = (int)( sensor_angle / (360/sensors_num) );
++
++		if(position >= 0 && position < sensors_num )		
++			if (obstacles_in_range[i].dist < sensors[position].getSingleObstacleSensorOut())
++				sensors[position].setSingleObstacleSensor(obstacles_in_range[i].dist);
++	}
++
++	/* Saturation of sensors readings*/
++	for(int i=0; i<sensors_num; i++)
++	{
++		if(sensors[i].getSingleObstacleSensorOut() >= sensorsRange)
++			sensors[i].setSingleObstacleSensor(sensorsRange);
++	}
++}
++
++void ObstacleSensors::printSensors()
++{
++	int tabsBefore;
++	int tabsAfter;
++	if(sensors_num % 2 == 0)
++	{
++		for(int curLevel=0; curLevel<sensors_num/2; curLevel++)
++		{
++			tabsBefore=sensors_num/2 - curLevel - 1;
++			tabsAfter= curLevel*2+1;
++			for(int i=0; i<tabsBefore; i++)
++				printf("\t");
++			printf("%.2f",sensors[sensors_num/2-1-curLevel].getSingleObstacleSensorOut());
++			for(int i=0; i<tabsAfter; i++)
++				printf("\t");
++			printf("%.2f",sensors[sensors_num/2+curLevel].getSingleObstacleSensorOut());
++			printf("\n");
++		}
++		
++	}
++	else
++	{
++		for(int curLevel=0; curLevel<(sensors_num/2+1); curLevel++)
++		{
++			tabsBefore=sensors_num/2 - curLevel ;
++			tabsAfter= curLevel*2 ;
++			for(int i=0; i<tabsBefore; i++)
++				printf("\t");
++			printf("%.2f",sensors[sensors_num/2-1-curLevel].getSingleObstacleSensorOut());
++			if(curLevel>0)
++			{
++				for(int i=0; i<tabsAfter; i++)
++					printf("\t");
++				if(curLevel==0)
++					printf(" ");
++				printf("%.2f",sensors[sensors_num/2+curLevel].getSingleObstacleSensorOut());
++			}
++			printf("\n");
++		}
++	}
++}
+diff --git a/src/libs/raceengineclient/ObstacleSensors.h b/src/libs/raceengineclient/ObstacleSensors.h
+new file mode 100644
+index 0000000..3625b94
+--- /dev/null
++++ b/src/libs/raceengineclient/ObstacleSensors.h
+@@ -0,0 +1,76 @@
++/***************************************************************************
++ 
++    file                 : ObstacleSensors.h
++    copyright            : (C) 2008 Lugi Cardamone, Daniele Loiacono, Matteo Verzola
++						   (C) 2013 Wolf-Dieter Beelitz
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++
++#ifndef _SENSOBST_H_
++#define _SENSOBST_H_
++
++#include <stdio.h>
++#include <math.h>
++#include <car.h>
++#include <robottools.h>
++#include <raceman.h>
++
++class Obstacle
++{
++	public:
++		double dist_vert;
++		double dist_horiz;
++		double dist;
++};
++
++class SingleObstacleSensor {
++	public:
++		void init(CarElt *car,double start_angle, double angle_covered,double range) ;
++
++		void setSingleObstacleSensor(double sens_value);
++		inline double getSingleObstacleSensorOut() { return sensor_out; }
++		inline double getSingleObstacleSensorAngleStart() { return sensor_angle_start; }
++
++	protected:
++		
++
++		double sensor_range; //meters
++		double sensor_angle_start; 
++		double sensor_angle_covered;
++		double sensor_out;   //if = RANGE then no obstacle in range, else equals the distance from the obstacle in that direction
++
++		tCarElt *car;
++};
++
++class ObstacleSensors {
++	public:
++		ObstacleSensors(int sensors_number, tTrack* track, tCarElt* car, tSituation *situation, int range );
++		~ObstacleSensors();
++
++		double getObstacleSensorOut(int sensor_id);
++
++		void sensors_update(tSituation *situation);
++
++	protected:
++		SingleObstacleSensor *sensors;
++		int sensors_num;
++		Obstacle* obstacles_in_range;    //info on opponents to sense
++		Obstacle* all_obstacles;	//info on ALL opponents, no matter what their position is!
++        tCarElt* myc;
++		int sensorsRange;
++		double anglePerSensor;
++
++	private:
++		void printSensors();
++};
++
++
++#endif
+diff --git a/src/libs/raceengineclient/SimpleParser.cpp b/src/libs/raceengineclient/SimpleParser.cpp
+new file mode 100644
+index 0000000..fcd360e
+--- /dev/null
++++ b/src/libs/raceengineclient/SimpleParser.cpp
+@@ -0,0 +1,128 @@
++/***************************************************************************
++ 
++    file                 : SimpleParser.cpp
++    copyright            : (C) 2007 Daniele Loiacono
++ 
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++#include "SimpleParser.h"
++
++bool
++SimpleParser::parse(string sensors, string tag, float &value)
++{
++	size_t open,close;
++	open = sensors.find_first_of('(');
++	while (open!=string::npos)
++	{		
++		close = sensors.find_first_of(')',open);
++		if (close != string::npos)
++		{
++			istringstream IN(sensors.substr(open+1,close-open-1));
++			string currTag;
++			IN >> currTag;
++			if (currTag.compare(tag)==0)
++			{
++				IN >> value;
++				return true;
++			}
++			open = sensors.find_first_of('(',close+1);
++		}
++		else
++			return false;
++
++	}
++	return false;
++}
++
++bool
++SimpleParser::parse(string sensors, string tag, int &value)
++{
++	size_t open,close;
++	open = sensors.find_first_of('(');;
++	while (open!=string::npos)
++	{		
++		close = sensors.find_first_of(')',open);
++		if (close != string::npos)
++		{
++			istringstream IN(sensors.substr(open+1,close-open-1));
++			string currTag;
++			IN >> currTag;
++			if (currTag.compare(tag)==0)
++			{
++				IN >> value;
++				return true;
++			}
++			open = sensors.find_first_of('(',close+1);
++		}
++		else
++			return false;
++	}
++	return false;
++}
++
++bool
++SimpleParser::parse(string sensors, string tag, float *value, int size)
++{
++	size_t open,close;
++	open = sensors.find_first_of('(');
++	while (open!=string::npos)
++	{		
++		close = sensors.find_first_of(')',open);
++		if (close != string::npos)
++		{
++			istringstream IN(sensors.substr(open+1,close-open-1));
++			string currTag;
++			IN >> currTag;
++			if (currTag.compare(tag)==0)
++			{				
++				for (int i = 0; i < size; ++i) 
++				{
++					if (! (IN >> value[i]) )
++						return false;
++				}
++				return true;
++			}
++			open = sensors.find_first_of('(',close+1);
++		}
++		else
++			return false;
++	}
++	return false;
++}
++
++string 
++SimpleParser::stringify(string tag, float value)
++{
++	ostringstream STR;
++	STR << "(" << tag << " " << value << ")";
++	return STR.str();
++}
++
++string 
++SimpleParser::stringify(string tag, int value)
++{
++	ostringstream STR;
++	STR << "(" << tag << " " << value << ")";
++	return STR.str();
++}
++
++string 
++SimpleParser::stringify(string tag, float *value, int size)
++{
++	ostringstream STR;
++	STR << "(" << tag;
++	for (int i = 0; i < size; ++i) 
++	{
++		STR << " " << value[i];
++	}
++	STR << ")";
++	return STR.str();
++}
+diff --git a/src/libs/raceengineclient/SimpleParser.h b/src/libs/raceengineclient/SimpleParser.h
+new file mode 100644
+index 0000000..4ed47b6
+--- /dev/null
++++ b/src/libs/raceengineclient/SimpleParser.h
+@@ -0,0 +1,43 @@
++/***************************************************************************
++ 
++    file                 : SimpleParser.h
++    copyright            : (C) 2007 Daniele Loiacono
++ 
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++#ifndef SIMPLEPARSER_H_
++#define SIMPLEPARSER_H_
++
++#include <iostream>
++#include <sstream>
++#include <cstring>
++
++using namespace std;
++
++
++class SimpleParser
++{
++public:
++        static bool  parse(string sensors, string tag, float &value);
++
++        static bool  parse(string sensors, string tag, int &value);
++
++        static bool  parse(string sensors, string tag, float *value, int size);
++
++        static string stringify(string tag, float value);
++
++        static string  stringify(string tag, int value);
++
++        static string  stringify(string tag, float *value, int size);
++
++};
++
++#endif /*SIMPLEPARSER_H_*/
+diff --git a/src/libs/raceengineclient/get_sensors.cpp b/src/libs/raceengineclient/get_sensors.cpp
+new file mode 100644
+index 0000000..2ee2154
+--- /dev/null
++++ b/src/libs/raceengineclient/get_sensors.cpp
+@@ -0,0 +1,164 @@
++/***************************************************************************
++
++    file                 : scr_server.cpp
++    copyright            : (C) 2007 Daniele Loiacono
++
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++
++#include "get_sensors.h"
++
++get_sensors::get_sensors(tTrack* track,  tCarElt* car, tSituation *s){
++    __SENSORS_RANGE__ = 200;
++    curTrack = track;
++    curCar = car;
++    curS = s;
++    srand(time(NULL));
++    float a__[19] = {-45 ,-19, -12 ,-7 ,-4 ,-2.5 ,-1.7 ,-1 ,-0.5, 0 ,0.5 ,1 ,1.7, 2.5 ,4 ,7 ,12 ,19, 45};
++    for (int i = 0; i < 19; ++i) {
++        trackSensAngle[i] = a__[i];
++    }
++    
++    focusSens = new Sensors(car, 5);//ML
++    for (int i = 0; i < 5; ++i) {//ML
++        focusSens->setSensor(i,(car->_focusCmd)+i-2.0,200);//ML
++    }//ML
++    trackSens = new Sensors(car, 19);
++    for (int i = 0; i < 19; ++i) {
++        trackSens->setSensor(i,trackSensAngle[i],__SENSORS_RANGE__);
++    }
++    oppSens = new ObstacleSensors(36, curTrack, car, s, (int) __SENSORS_RANGE__);
++
++    prevDist=-1;
++}
++void get_sensors::set_sensor(){
++
++    dist_to_middle = 2*curCar->_trkPos.toMiddle/(curCar->_trkPos.seg->width);
++    angle =  RtTrackSideTgAngleL(&(curCar->_trkPos)) - curCar->_yaw;
++    NORM_PI_PI(angle); // normalize the angle between -PI and + PI
++
++//Update focus sensors' angle
++    for (int i = 0; i < 5; ++i) {
++        focusSens->setSensor(i,(curCar->_focusCmd)+i-2.0,200);
++    }
++
++    // update the value of track sensors only as long as the curCar is inside the track
++    float trackSensorOut[19];
++    float focusSensorOut[5];//ML
++    if (dist_to_middle<=1.0 && dist_to_middle >=-1.0 )
++    {
++        trackSens->sensors_update();
++        for (int i = 0; i < 19; ++i)
++        {
++            trackSensorOut[i] = trackSens->getSensorOut(i);
++            if (getNoisy())
++                trackSensorOut[i] *= normRand(1,__NOISE_STD__);
++        }
++        focusSens->sensors_update();//ML
++        if ((curCar->_focusCD <= curCar->_curLapTime + curCar->_curTime)//ML Only send focus sensor reading if cooldown is over
++            && (curCar->_focusCmd != 360))//ML Only send focus reading if requested by client
++        {//ML
++            for (int i = 0; i < 5; ++i)
++            {
++                focusSensorOut[i] = focusSens->getSensorOut(i);
++                if (getNoisy())
++                    focusSensorOut[i] *= normRand(1,__FOCUS_NOISE_STD__);
++            }
++            curCar->_focusCD = curCar->_curLapTime + curCar->_curTime + 1.0;//ML Add cooldown [seconds]
++        }//ML
++        else//ML
++        {//ML
++            for (int i = 0; i < 5; ++i)//ML
++                focusSensorOut[i] = -1;//ML During cooldown send invalid focus reading
++        }//ML
++    }
++    else
++    {
++        for (int i = 0; i < 19; ++i)
++        {
++            trackSensorOut[i] = -1;
++        }
++        for (int i = 0; i < 5; ++i)
++        {
++            focusSensorOut[i] = -1;
++        }
++    }
++    
++    // update the value of opponent sensors
++    float oppSensorOut[36];
++    oppSens->sensors_update(curS);
++    for (int i = 0; i < 36; ++i)
++    {
++        oppSensorOut[i] = oppSens->getObstacleSensorOut(i);
++        if (getNoisy())
++            oppSensorOut[i] *= normRand(1,__OPP_NOISE_STD__);
++    }
++
++    float wheelSpinVel[4];
++    for (int i=0; i<4; ++i)
++    {
++        wheelSpinVel[i] = curCar->_wheelSpinVel(i);
++    }
++
++    if (prevDist<0)
++    {
++    prevDist = curCar->race.distFromStartLine;
++    }
++    float curDistRaced = curCar->race.distFromStartLine - prevDist;
++    prevDist = curCar->race.distFromStartLine;
++    if (curDistRaced>100)
++    {
++    curDistRaced -= curTrack->length;
++    }
++    if (curDistRaced<-100)
++    {
++    curDistRaced += curTrack->length;
++    }
++
++    distRaced += curDistRaced;
++
++    if (is_sim_dqn_main){
++        *is_ready_dqn_main = false;
++        *angle_dqn_main = angle;
++        for(int j = 0 ;j < 19 ; j++)
++            track_dqn_main[j] = trackSensorOut[j];
++        for(int j = 0 ;j < 36 ; j++)
++            opponents_main[j] = oppSensorOut[j];
++        for(int j = 0 ;j < 5 ; j++)
++            focus_main[j] = focusSensorOut[j];
++        *track_pos_dqn_main = dist_to_middle;
++        *speed_x_dqn_main = curCar->_speed_x  * 3.6;
++        *speed_y_dqn_main = curCar->_speed_y  * 3.6;
++        *speed_z_dqn_main = curCar->_speed_z  * 3.6;
++        for(int j = 0 ;j < 4 ; j++)
++            wheel_dqn_main[j] = wheelSpinVel[j];
++        *rpm_dqn_main = curCar->_enginerpm * 10;
++
++        *damage_main = curCar->_dammage;
++        *curLapTime_main = curCar->_curLapTime;
++        *lastLapTime_main = curCar->_lastLapTime;
++        *distFromStart_main = curCar->race.distFromStartLine;
++        *distRaced_main = distRaced;
++        *fuel_main = curCar->_fuel;
++        *racePos_main = curCar->race.pos;
++        *gear_main = curCar->_gear;
++        *z_main = curCar->_pos_Z - RtTrackHeightL(&(curCar->_trkPos));
++    
++        *is_ready_dqn_main = true;    
++        is_sim_dqn_main = false;
++    }
++    if(*pis_restart_main_write){	
++        curCar->ctrl.askRestart = true;
++        *pis_restart_main_write = false;
++        *is_ready_dqn_main = false;
++    }
++}
++
+diff --git a/src/libs/raceengineclient/get_sensors.h b/src/libs/raceengineclient/get_sensors.h
+new file mode 100644
+index 0000000..4682ce4
+--- /dev/null
++++ b/src/libs/raceengineclient/get_sensors.h
+@@ -0,0 +1,276 @@
++/***************************************************************************
++
++    file                 : scr_server.cpp
++    copyright            : (C) 2007 Daniele Loiacono
++
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *
++ ***************************************************************************/
++
++#ifndef GET_SENSORS_H_
++#define GET_SENSORS_H_
++#ifdef _WIN32
++#include <windows.h>
++#endif
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <math.h>
++#include <iostream>
++#include <sstream>
++#include <ctime>
++
++#include <tgf.h>
++#include <track.h>
++#include <car.h>
++#include <raceman.h>
++#include <robottools.h>
++#include <robot.h>
++#include "sensors.h"
++#include "SimpleParser.h"
++#include "CarControl.h"
++#include "ObstacleSensors.h"
++
++#define NBBOTS 10
++
++#define RACE_RESTART 1
++//#define __STEP_LIMIT__ 10000
++//#define __DISABLE_RESTART__
++//#define __PRINT_RACE_RESULTS__
++
++#define __FOCUS_RANGE__ 200
++
++/*** Noise definitions ***/
++#define __NOISE_STD__ 0.1
++#define __OPP_NOISE_STD__ 0.02
++#define __FOCUS_NOISE_STD__ 0.01
++
++#ifdef __PRINT_RACE_RESULTS__
++static tdble bestLap[NBBOTS];
++static tdble damages[NBBOTS];
++static tdble totalTime[NBBOTS];
++static int position[NBBOTS];
++static int curPosition=0;
++static int bonusBest;
++static int bonusDamage;
++static char *trackName;
++#endif
++
++extern float* angle_dqn_main;
++extern float* track_dqn_main;
++extern float* opponents_main;
++extern float* focus_main;
++extern float* track_pos_dqn_main;
++extern float* speed_x_dqn_main;
++extern float* speed_y_dqn_main;
++extern float* speed_z_dqn_main;
++extern float* wheel_dqn_main;
++extern float* rpm_dqn_main;
++extern float* damage_main;
++extern float* curLapTime_main;
++extern float* lastLapTime_main;
++extern float* distFromStart_main;
++extern float* distRaced_main;
++extern float* fuel_main;
++extern int* racePos_main;
++extern int* gear_main;
++extern float* z_main;
++
++extern bool* pis_restart_main_write;
++extern double* psteer_main_write;
++extern double* pbrake_main_write;
++extern double* paccel_main_write;
++extern int* pgear_main_write;
++extern double* pclutch_main_write;
++extern bool* is_ready_dqn_main;
++extern bool is_sim_dqn_main;
++
++class get_sensors{
++    private:
++        double __SENSORS_RANGE__;
++        Sensors *trackSens;
++        ObstacleSensors *oppSens;
++        Sensors *focusSens;//ML
++        float trackSensAngle[19];
++        tdble prevDist;
++        tdble distRaced;
++        tTrack	*curTrack;
++        float dist_to_middle;
++        float angle;
++        tCarElt* curCar;
++        tSituation *curS;
++
++        double normRand(double avg,double std){
++        	 double x1, x2, w, y1, y2;
++        
++        	    do {
++        	            x1 = 2.0 * rand()/(double(RAND_MAX)) - 1.0;
++        	            x2 = 2.0 * rand()/(double(RAND_MAX)) - 1.0;
++        	            w = x1 * x1 + x2 * x2;
++        	    } while ( w >= 1.0 );
++        
++        	    w = sqrt( (-2.0 * log( w ) ) / w );
++        	    y1 = x1 * w;
++        	    y2 = x2 * w;
++        	    return y1*std + avg;
++        }
++
++    public:
++        get_sensors(tTrack* track,  tCarElt* car, tSituation *s);
++        void set_sensor();
++//        get_sensors(tTrack* track,  tCarElt* car, tSituation *s){
++//            __SENSORS_RANGE__ = 200;
++//            curTrack = track;
++//            curCar = car;
++//            curS = s;
++//            srand(time(NULL));
++//            float a__[19] = {-45 ,-19, -12 ,-7 ,-4 ,-2.5 ,-1.7 ,-1 ,-0.5, 0 ,0.5 ,1 ,1.7, 2.5 ,4 ,7 ,12 ,19, 45};
++//            for (int i = 0; i < 19; ++i) {
++//                trackSensAngle[i] = a__[i];
++//            }
++//            
++//            focusSens = new Sensors(car, 5);//ML
++//            for (int i = 0; i < 5; ++i) {//ML
++//                focusSens->setSensor(i,(car->_focusCmd)+i-2.0,200);//ML
++//            }//ML
++//            trackSens = new Sensors(car, 19);
++//            for (int i = 0; i < 19; ++i) {
++//                trackSens->setSensor(i,trackSensAngle[i],__SENSORS_RANGE__);
++//            }
++//            oppSens = new ObstacleSensors(36, curTrack, car, s, (int) __SENSORS_RANGE__);
++//
++//            prevDist=-1;
++//        }
++//        void set_sensor(){
++//
++//            dist_to_middle = 2*curCar->_trkPos.toMiddle/(curCar->_trkPos.seg->width);
++//            angle =  RtTrackSideTgAngleL(&(curCar->_trkPos)) - curCar->_yaw;
++//            NORM_PI_PI(angle); // normalize the angle between -PI and + PI
++//
++//        //Update focus sensors' angle
++//            for (int i = 0; i < 5; ++i) {
++//                focusSens->setSensor(i,(curCar->_focusCmd)+i-2.0,200);
++//            }
++//
++//            // update the value of track sensors only as long as the curCar is inside the track
++//            float trackSensorOut[19];
++//            float focusSensorOut[5];//ML
++//            if (dist_to_middle<=1.0 && dist_to_middle >=-1.0 )
++//            {
++//                trackSens->sensors_update();
++//                for (int i = 0; i < 19; ++i)
++//                {
++//                    trackSensorOut[i] = trackSens->getSensorOut(i);
++//                    if (getNoisy())
++//                        trackSensorOut[i] *= normRand(1,__NOISE_STD__);
++//                }
++//                focusSens->sensors_update();//ML
++//                if ((curCar->_focusCD <= curCar->_curLapTime + curCar->_curTime)//ML Only send focus sensor reading if cooldown is over
++//                    && (curCar->_focusCmd != 360))//ML Only send focus reading if requested by client
++//                {//ML
++//                    for (int i = 0; i < 5; ++i)
++//                    {
++//                        focusSensorOut[i] = focusSens->getSensorOut(i);
++//                        if (getNoisy())
++//                            focusSensorOut[i] *= normRand(1,__FOCUS_NOISE_STD__);
++//                    }
++//                    curCar->_focusCD = curCar->_curLapTime + curCar->_curTime + 1.0;//ML Add cooldown [seconds]
++//                }//ML
++//                else//ML
++//                {//ML
++//                    for (int i = 0; i < 5; ++i)//ML
++//                        focusSensorOut[i] = -1;//ML During cooldown send invalid focus reading
++//                }//ML
++//            }
++//            else
++//            {
++//                for (int i = 0; i < 19; ++i)
++//                {
++//                    trackSensorOut[i] = -1;
++//                }
++//                for (int i = 0; i < 5; ++i)
++//                {
++//                    focusSensorOut[i] = -1;
++//                }
++//            }
++//            
++//            // update the value of opponent sensors
++//            float oppSensorOut[36];
++//            oppSens->sensors_update(curS);
++//            for (int i = 0; i < 36; ++i)
++//            {
++//                oppSensorOut[i] = oppSens->getObstacleSensorOut(i);
++//                if (getNoisy())
++//                    oppSensorOut[i] *= normRand(1,__OPP_NOISE_STD__);
++//            }
++//
++//            float wheelSpinVel[4];
++//            for (int i=0; i<4; ++i)
++//            {
++//                wheelSpinVel[i] = curCar->_wheelSpinVel(i);
++//            }
++//
++//            if (prevDist<0)
++//            {
++//            prevDist = curCar->race.distFromStartLine;
++//            }
++//            float curDistRaced = curCar->race.distFromStartLine - prevDist;
++//            prevDist = curCar->race.distFromStartLine;
++//            if (curDistRaced>100)
++//            {
++//            curDistRaced -= curTrack->length;
++//            }
++//            if (curDistRaced<-100)
++//            {
++//            curDistRaced += curTrack->length;
++//            }
++//
++//            distRaced += curDistRaced;
++//
++//            if (is_sim_dqn_main){
++//                *is_ready_dqn_main = false;
++//                *angle_dqn_main = angle;
++//                for(int j = 0 ;j < 19 ; j++)
++//                    track_dqn_main[j] = trackSensorOut[j];
++//                for(int j = 0 ;j < 36 ; j++)
++//                    opponents_main[j] = oppSensorOut[j];
++//                for(int j = 0 ;j < 5 ; j++)
++//                    focus_main[j] = focusSensorOut[j];
++//                *track_pos_dqn_main = dist_to_middle;
++//                *speed_x_dqn_main = curCar->_speed_x  * 3.6;
++//                *speed_y_dqn_main = curCar->_speed_y  * 3.6;
++//                *speed_z_dqn_main = curCar->_speed_z  * 3.6;
++//                for(int j = 0 ;j < 4 ; j++)
++//                    wheel_dqn_main[j] = wheelSpinVel[j];
++//                *rpm_dqn_main = curCar->_enginerpm * 10;
++//
++//                *damage_main = curCar->_dammage;
++//                *curLapTime_main = curCar->_curLapTime;
++//                *lastLapTime_main = curCar->_lastLapTime;
++//                *distFromStart_main = curCar->race.distFromStartLine;
++//                *distRaced_main = distRaced;
++//                *fuel_main = curCar->_fuel;
++//                *racePos_main = curCar->race.pos;
++//                *gear_main = curCar->_gear;
++//                *z_main = curCar->_pos_Z - RtTrackHeightL(&(curCar->_trkPos));
++//            
++//                *is_ready_dqn_main = true;    
++//                is_sim_dqn_main = false;
++//            }
++//            if(*pis_restart_main_write){	
++//                curCar->ctrl.askRestart = true;
++//                *pis_restart_main_write = false;
++//                *is_ready_dqn_main = false;
++//            }
++//        }
++
++};
++#endif
+diff --git a/src/libs/raceengineclient/raceengine.cpp b/src/libs/raceengineclient/raceengine.cpp
+index 9544c68..1b1697b 100644
+--- a/src/libs/raceengineclient/raceengine.cpp
++++ b/src/libs/raceengineclient/raceengine.cpp
+@@ -40,12 +40,14 @@
+ #include "raceengine.h"
+ 
+ 
++#include "get_sensors.h"
+ #include <iostream>
+ #include <cstdio>
+ #include <ctime>
+ #define image_width 640
+ #define image_height 480
+ #define PI 3.1415926
++get_sensors* sensor;
+ static double	msgDisp;
+ static double	bigMsgDisp;
+ //zj
+@@ -831,11 +833,11 @@ ReOneStep(double deltaTimeIncrement)
+ 	if (*ppause == 1) 
+ 	{ 
+ 		count++;
++        //printf("count: %d\n",count);	
+ 		if (count>150) // 50 -> 10FPS
+-		//if (count>50) // 50 -> 10FPS
+ 		{
+ 			count=1;
+-		    //printf("key: %d\n",key);	
++		    //printf("key: %d\n",count);	
+ 			glReadPixels(0, 0, image_width, image_height, GL_RGB, GL_UNSIGNED_BYTE, (GLvoid*)pdata);
+ 
+ 			*pwritten=1;
+@@ -920,6 +922,8 @@ ReOneStep(double deltaTimeIncrement)
+ 
+ 		*ptrack_radius_main_read = car->_trkPos.seg->radius;
+ 
++		printf("left: %f \n",car->_trkPos.toLeft);
++		printf("right: %f \n",car->_trkPos.toRight);
+ 		if(car->_laps == s->_totLaps){
+ 			if(car->_distFromStartLine / ReInfo->track->length > 0.99){
+ 				*pis_finish_main_read = true;
+@@ -970,6 +974,7 @@ ReOneStep(double deltaTimeIncrement)
+ 		ReRaceMsgUpdate();
+ 	}
+ 
++    sensor->set_sensor();
+ 
+ 	bool restartRequested = false;
+ 	for (i = 0; i < s->_ncars; i++) {
+@@ -1002,6 +1007,7 @@ ReOneStep(double deltaTimeIncrement)
+ void
+ ReStart(void)
+ {
++    sensor = new get_sensors(ReInfo->track,ReInfo->s->cars[0],ReInfo->s);
+     ReInfo->_reRunning = 1;
+     ReInfo->_reCurTime = GfTimeClock() - RCM_MAX_DT_SIMU;
+ }
+diff --git a/src/libs/raceengineclient/sensors.cpp b/src/libs/raceengineclient/sensors.cpp
+new file mode 100644
+index 0000000..7f09260
+--- /dev/null
++++ b/src/libs/raceengineclient/sensors.cpp
+@@ -0,0 +1,550 @@
++/***************************************************************************
++ 
++    file                 : sensors.cpp
++    copyright            : (C) 2007 Alessandro Prete, Daniele Loiacono
++ 
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *  
++ ***************************************************************************/                                                 
++ 
++#include "sensors.h"
++
++#define HALF_PI PI/2
++
++Sensors::Sensors(tCarElt *car, int sensors_number)
++{
++	sensors_num = sensors_number;
++	sensor = new SingleSensor[sensors_num];
++	for (int i = 0; i < sensors_num; i++) sensor[i].init(car);
++}
++
++
++Sensors::~Sensors()
++{
++	delete [] sensor;
++}
++
++
++void Sensors::sensors_update()
++{
++	for (int i = 0; i < sensors_num; i++) sensor[i].update();
++}
++
++
++void Sensors::setSensor(int sensor_id, float angle, float range)
++{ 
++	sensor[sensor_id].setSingleSensor(angle, range); 
++}
++
++
++float Sensors::getSensorOut(int sensor_id)
++{ 
++	return sensor[sensor_id].getSingleSensorOut(); 
++}
++
++
++void SingleSensor::setSingleSensor(float angle, float range)
++{
++	sensor_angle = (angle*PI)/180;
++	sensor_range = range;
++}
++
++
++void SingleSensor::update()
++{
++	//Angolo del sensore relativo al segmento del tracciato
++	float relative_sensor_angle = RtTrackSideTgAngleL(&(car->_trkPos)) - car->_yaw + sensor_angle; 
++
++/*	printf ("\nabsolute_car_angle:               %f (degree)", (car->_yaw*180)/PI);
++	printf ("\nabsolute_sensor_angle:            %f (degree)", (absolute_sensor_angle*180)/PI);
++	printf ("\nabsolute_track_angle:             %f (degree)", (absolute_track_angle*180)/PI);
++	printf ("\nrelative_sensor_angle:            %f (degree)", (relative_sensor_angle*180)/PI);
++	printf ("\nsensor_angle:					 %f (degree)", (sensor_angle*180)/PI);*/
++	
++	NORM_PI_PI(relative_sensor_angle);
++	
++/*	printf ("\nrelative_sensor_angle normalized: %f (degree)", (relative_sensor_angle*180)/PI);
++	printf ("\nX1:                               %f (meters)", car->_trkPos.toLeft);
++	printf ("\nX2:                               %f (meters)", car->_trkPos.toRight);
++	printf ("\nY:                                %f (meters or arc)", car->_trkPos.toStart);
++	printf ("\nTo Middle:                        %f (meters)", car->_trkPos.toMiddle);
++	printf ("\nTrack Segment Start Width:        %f (meters)", car->_trkPos.seg->startWidth);
++	printf ("\nTrack Segment End Width:          %f (meters)", car->_trkPos.seg->endWidth);
++	printf ("\nTrack Segment Length:             %f (meters)\n", car->_trkPos.seg->length);*/
++
++	switch (car->_trkPos.seg->type) 
++	{
++		case 3: sensor_out = sensor_calc_str(car->_trkPos.seg, car->_trkPos.toLeft, car->_trkPos.toStart, -relative_sensor_angle, sensor_range);
++				break;
++		case 2:	sensor_out = sensor_calc_lft_rgt(car->_trkPos.seg, car->_trkPos.toLeft, car->_trkPos.toStart, -relative_sensor_angle, sensor_range);
++				break;
++		case 1:	sensor_out = sensor_calc_lft_rgt(car->_trkPos.seg, car->_trkPos.toLeft, car->_trkPos.toStart, -relative_sensor_angle, sensor_range);
++				break;
++	}
++}
++
++
++float SingleSensor::sensor_calc_str(tTrackSeg *seg, float x_coord, float y_coord, float angle, float remaining_range) 
++{
++	float x_sx = x_coord;						//meters
++	float x_dx = (seg->startWidth) - x_coord;	//meters
++	float y_up = (seg->length) - y_coord;		//meters
++	float y_dn = y_coord;						//meters
++
++	if (cos(angle) == 0)
++	{
++		if (angle > 0)
++		{
++			if (x_sx < remaining_range) return x_sx;
++			else return remaining_range;
++		}
++		else 
++		{
++			if (x_dx < remaining_range) return x_dx;
++			else return remaining_range;
++		}
++	}
++	else
++		if (cos(angle) > 0 && sin(angle) >= 0)
++		{
++			if ((x_sx/y_up) > tan(angle)) //potrei incontrare il bordo superiore, controllare il range 
++			{
++				float partial = y_up/cos(angle);
++				if (partial >= remaining_range) return remaining_range;
++				else
++				{
++					float x = x_sx - (partial * sin(angle));
++					float partial_returned=0.1f;
++					switch (seg->next->type) 
++					{
++						case 3:	partial_returned = sensor_calc_str(seg->next, x, 0, angle, (remaining_range - partial));
++								break;
++						case 2:	partial_returned = sensor_calc_lft_rgt(seg->next, x, 0, angle, (remaining_range - partial));
++								break;
++						case 1:	partial_returned = sensor_calc_lft_rgt(seg->next, x, 0, angle, (remaining_range - partial));
++								break;
++					}
++					return (partial_returned + partial);
++				}
++			}
++			else //potrei incontrare il bordo sinistro, controllare il range
++			{
++				float temp_val = x_sx / cos((HALF_PI) - angle);
++				if (temp_val >= remaining_range) return remaining_range;
++				else return temp_val;
++			}
++		}
++	else
++		if (cos(angle) > 0 && sin(angle) < 0)
++		{
++			if ((x_dx/y_up) > -tan(angle)) //potrei incontrare il bordo superiore, controllare il range
++			{
++				float partial = y_up/cos(angle);
++				if (partial >= remaining_range) return remaining_range;
++				else
++				{
++					float x = x_sx + (partial * sin(-angle));
++					float partial_returned=0.1f;
++					switch (seg->next->type)
++					{
++						case 3:	partial_returned = sensor_calc_str(seg->next, x, 0, angle, (remaining_range - partial));
++								break;
++						case 2:	partial_returned = sensor_calc_lft_rgt(seg->next, x, 0, angle, (remaining_range - partial));
++								break;
++						case 1:	partial_returned = sensor_calc_lft_rgt(seg->next, x, 0, angle, (remaining_range - partial));
++								break;
++					}
++					return (partial_returned + partial);
++				}
++			}
++			else //potrei incontrare il bordo destro, controllare il range
++			{
++				float temp_val = x_dx / cos((HALF_PI) + angle);
++				if (temp_val >= remaining_range) return remaining_range;
++				else return temp_val;
++			}
++		}
++	else
++		if (cos(angle) < 0 && sin(angle) >= 0)
++		{
++			if ((x_sx/y_dn) > tan(PI-angle)) //potrei incontrare il bordo inferiore, controllare il range
++			{
++				float partial = y_dn/-cos(angle);
++				if (partial >= remaining_range) return remaining_range;
++				else
++				{
++					float x = x_sx - (partial * sin(PI-angle));
++					float partial_returned=0.1f;
++					switch (seg->prev->type) 
++					{
++						case 3:	partial_returned = sensor_calc_str(seg->prev, x, seg->prev->length, angle, (remaining_range - partial));
++								break;
++						case 2:	partial_returned = sensor_calc_lft_rgt(seg->prev, x, seg->prev->arc, angle, (remaining_range - partial));
++								break;
++						case 1:	partial_returned = sensor_calc_lft_rgt(seg->prev, x, seg->prev->arc, angle, (remaining_range - partial));
++								break;
++					}
++					return (partial_returned + partial);
++				}
++			}
++			else //potrei incontrare il bordo sinistro, controllare il range
++			{
++				float temp_val = x_sx / cos(angle - (HALF_PI));
++				if (temp_val >= remaining_range) return remaining_range;
++				else return temp_val;
++			}
++		}
++	else
++		if (cos(angle) < 0 && sin(angle) < 0)
++		{
++			if ((x_dx/y_dn) > tan(PI+angle)) //potrei incontrare il bordo inferiore, controllare il range
++			{
++				float partial = y_dn / cos(PI + angle);
++				if (partial >= remaining_range) return remaining_range;
++				else
++				{
++					float x = x_sx + partial * sin(PI + angle);
++					float partial_returned=0.1f;
++					switch (seg->prev->type) 
++					{
++						case 3:	partial_returned = sensor_calc_str(seg->prev, x, seg->prev->length, angle, (remaining_range - partial));
++								break;
++						case 2:	partial_returned = sensor_calc_lft_rgt(seg->prev, x, seg->prev->arc, angle, (remaining_range - partial));
++								break;
++						case 1:	partial_returned = sensor_calc_lft_rgt(seg->prev, x, seg->prev->arc, angle, (remaining_range - partial));
++								break;
++					}
++					return (partial_returned + partial);
++				}
++			}
++			else //potrei incontrare il bordo destro, controllare il range
++			{
++				float temp_val = x_dx / cos(-angle - (HALF_PI));
++				if (temp_val >= remaining_range) return remaining_range;
++				else return temp_val;
++			}
++		}
++	else return remaining_range;
++}
++
++
++float SingleSensor::sensor_calc_lft_rgt(tTrackSeg *seg, float x_coord, float y_coord, float angle, float remaining_range) 
++{
++	float x_sx = x_coord;						//meters
++	float x_dx = (seg->startWidth) - x_sx;		//meters
++	float y_up = (seg->arc) - y_coord;			//radians
++	float y_dn = y_coord;						//radians
++	float radius_max, radius_min, radius_x, temp_angle;
++
++	if (seg->type == 2)
++	{
++		radius_max = seg->radiusr;
++		radius_min = seg->radiusl;
++		radius_x = radius_min + x_sx;
++		temp_angle = angle;
++	}
++	else
++	{
++		radius_max = seg->radiusl;
++		radius_min = seg->radiusr;
++		radius_x = radius_min + x_dx;
++		temp_angle = -angle;
++	}
++	
++	float dist_returned;
++	float angle_returned;
++	float x_returned;
++	if (check_max_circle_intersect(temp_angle, radius_max, radius_x, y_dn, y_up, remaining_range, dist_returned)) return dist_returned;
++	else if	(check_min_circle_intersect(temp_angle, radius_min, radius_x, y_dn, y_up, remaining_range, dist_returned)) return dist_returned;
++	else if (check_up_border_intersect(temp_angle, radius_min, radius_x, y_up, remaining_range, dist_returned, angle_returned, x_returned))
++	{
++		float partial_returned=0.1f;
++//		printf ("\nRecursive Call for next segment\n");
++		
++		// Correction of outputs if we are currently in a right turn (Daniele Loiacono - 3/2009)
++		if (seg->type == 1)
++		{
++			x_returned = seg->startWidth - x_returned;
++			angle_returned = -angle_returned;
++		}
++
++		if (seg->next->type==3) 
++		{
++			partial_returned = sensor_calc_str(seg->next, x_returned, 0, angle_returned, (remaining_range - dist_returned));
++		} 
++		else
++		{
++			partial_returned = sensor_calc_lft_rgt(seg->next, x_returned, 0, angle_returned, (remaining_range - dist_returned));
++
++		}
++		return (partial_returned + dist_returned);
++	}
++	else if (check_down_border_intersect(temp_angle, radius_min, radius_x, y_dn, remaining_range, dist_returned, angle_returned, x_returned))
++	{
++		float partial_returned=0.1f;
++//		printf ("\nRecursive Call for prev segment\n");
++
++		// Correction of outputs if we are currently in a right turn (Daniele Loiacono - 3/2009)
++		if (seg->type == 1)
++		{
++			x_returned = seg->startWidth - x_returned;
++			angle_returned = -angle_returned;
++		}
++
++		if (seg->prev->type==3) 
++		{
++			partial_returned = sensor_calc_str(seg->prev, x_returned, seg->prev->length, angle_returned, (remaining_range - dist_returned));
++					
++		}
++		else
++		{
++			partial_returned = sensor_calc_lft_rgt(seg->prev, x_returned, seg->prev->arc, angle_returned, (remaining_range - dist_returned));
++		}		
++		return (partial_returned + dist_returned);
++	}
++	else return remaining_range;
++}
++
++
++bool SingleSensor::check_max_circle_intersect(float angle, float radius_max, float radius_x, float y_dn, float y_up, float remaining_range, float &dist_returned)
++{
++	if (angle < 0)
++	{
++		if (angle >= -(HALF_PI))
++		{
++			float check = radius_x * cos(-angle);
++			float beta = acos(check/radius_max);
++			float gamma = beta + angle;
++			if (gamma <= y_up) //il sensore potrebbe incontrare il cerchio max in questo segmento
++			{
++				float check_dist = radius_x * sin(-angle);
++				float z = radius_max * sin(beta);
++				float dist = z - check_dist;
++				if (dist <= remaining_range)
++				{ 
++					dist_returned = dist;
++//					printf ("\nMax Circle Intersection (-90 < angle < 0)\n");
++					return true;
++				}
++				else return false;
++			}
++			else return false;
++		}
++		else // if (angle < -(HALF_PI))
++		{
++			float check = radius_x * cos(PI + angle);
++			float beta = acos(check/radius_max);
++			float gamma = beta - angle - PI;
++			if (gamma <= y_dn) //il sensore potrebbe incontrare il cerchio max in questo segmento
++			{
++				float check_dist = radius_x * sin(PI + angle);
++				float z = radius_max * sin(beta);
++				float dist = z - check_dist;
++				if (dist <= remaining_range)
++				{ 
++					dist_returned = dist;
++//					printf ("\nMax Circle Intersection (-180 < angle < -90)\n");
++					return true;
++				}
++				else return false;
++			}
++			else return false;
++		}
++	}
++	
++	else if (angle > 0)
++	{
++		if (angle <= (HALF_PI))
++		{
++			float check = radius_x * cos(angle);
++			float beta = acos(check/radius_max);
++			float gamma = beta + angle;
++			if (gamma <= y_up) //il sensore potrebbe incontrare il cerchio max in questo segmento
++			{
++				float check_dist = radius_x * sin(angle);
++				float z = radius_max * sin(beta);
++				float dist = z + check_dist;
++				if (dist <= remaining_range)
++				{ 
++					dist_returned = dist;
++//					printf ("\nMax Circle Intersection (0 < angle < 90)\n");
++					return true;
++				}
++				else return false;
++			}
++			else return false;
++		}
++		else // if (angle > (HALF_PI))
++		{
++			float check = radius_x * cos(PI + angle);
++			float beta = acos(check/radius_max);
++			float gamma = beta + angle + PI;
++			if (gamma <= y_up) //il sensore potrebbe incontrare il cerchio max in questo segmento
++			{
++				float check_dist = radius_x * sin(PI + angle);
++				float z = radius_max * sin(beta);
++				float dist = z + check_dist;
++				if (dist <= remaining_range)
++				{ 
++					dist_returned = dist;
++//					printf ("\nMax Circle Intersection (90 < angle < 180)\n");
++					return true;
++				}
++				else return false;
++			}
++			else return false;
++		}
++	}
++	else return false;
++}
++
++
++bool SingleSensor::check_min_circle_intersect(float angle, float radius_min, float radius_x, float y_dn, float y_up, float remaining_range, float &dist_returned)
++{
++	if (angle > 0 && angle <= (HALF_PI))
++	{
++		float check = radius_x * cos(angle);
++		float beta = acos(check/radius_min);
++		float gamma = angle - beta;
++		if (gamma <= y_up) //il sensore potrebbe incontrare il cerchio min in questo segmento
++		{
++			float check_dist = radius_x * sin(angle);
++			float z = radius_min * sin(beta);
++			float dist = check_dist - z;
++			if (dist <= remaining_range)
++			{ 
++				dist_returned = dist;
++//				printf ("\nMin Circle Intersection (0 < angle < 90)\n");
++				return true;
++			}
++			else return false;
++		}
++		else return false;
++	}
++	else if (angle > 0 && angle > (HALF_PI))
++	{
++		float check = radius_x * cos(PI - angle);
++		float beta = acos(check/radius_min);
++		float gamma = PI - beta - angle;
++		if (gamma <= y_dn && gamma >= 0.0) //il sensore potrebbe incontrare il cerchio min in questo segmento
++		{
++			float check_dist = radius_x * sin(PI - angle);
++			float z = radius_min * sin(beta);
++			float dist = check_dist - z;
++			if (dist <= remaining_range)
++			{ 
++				dist_returned = dist;
++//				printf ("\nMin Circle Intersection (90 < angle < 180)\n");
++				return true;
++			}
++			else return false;
++		}
++		else return false;
++	}
++	else return false;
++}
++
++
++bool SingleSensor::check_up_border_intersect(float angle, float radius_min, float radius_x, float y_up, float remaining_range, float &dist_returned, float &angle_returned, float &x_returned)
++{
++	if (angle < (HALF_PI) && angle > -(HALF_PI))
++	{
++		if (angle >= y_up)
++		{
++			float check_dist = radius_x * sin(y_up);
++			float dist = check_dist / cos(angle - y_up);
++			if (dist < remaining_range) //il sensore incontra il bordo superiore di questo segmento
++			{
++				float z = dist * sin(angle - y_up);
++				float check = radius_x * cos(y_up);
++				dist_returned = dist;
++				angle_returned = angle - y_up;
++				x_returned =  check - z - radius_min;
++//				printf ("\nUp Boarder Intersection\n");
++				return true;
++			}
++			else return false;
++		}
++		else
++		{
++			float check_dist = radius_x * sin(y_up);
++			float dist = check_dist / cos(y_up - angle);
++			if (dist < remaining_range) //il sensore incontra il bordo superiore di questo segmento
++			{
++				float z = dist * sin(y_up - angle);
++				float check = radius_x * cos(y_up);
++				dist_returned = dist;
++				angle_returned = - (y_up - angle);
++				x_returned =  check + z - radius_min;
++//				printf ("\nUp Boarder Intersection\n");
++				return true;
++			}
++			else return false;
++		}
++	}
++	else return false;
++}
++
++
++bool SingleSensor::check_down_border_intersect(float angle, float radius_min, float radius_x, float y_dn, float remaining_range, float &dist_returned, float &angle_returned, float &x_returned)
++{
++	if (angle > (HALF_PI) || angle < -(HALF_PI))
++	{
++		if (angle > 0 && angle <= (PI - y_dn))
++		{
++			float check_dist = radius_x * sin(y_dn);
++			float dist = check_dist / cos(PI - angle - y_dn);
++			if (dist < remaining_range) //il sensore incontra il bordo inferiore di questo segmento
++			{
++				float z = dist * sin(PI - angle - y_dn);
++				float check = radius_x * cos(y_dn);
++				dist_returned = dist;
++				angle_returned = angle + y_dn;
++				x_returned =  check - z - radius_min;
++//				printf ("\nDown Boarder Intersection\n");
++				return true;
++			}
++			else return false;
++		}
++		else if (angle > 0 && angle > (PI - y_dn))
++		{
++			float check_dist = radius_x * sin(y_dn);
++			float dist = check_dist / cos(y_dn + angle - PI);
++			if (dist < remaining_range) //il sensore incontra il bordo inferiore di questo segmento
++			{
++				float z = dist * sin(y_dn + angle - PI);
++				float check = radius_x * cos(y_dn);
++				dist_returned = dist;
++				angle_returned = -((2 * PI) - angle - y_dn);
++				x_returned =  check + z - radius_min;
++//				printf ("\nDown Boarder Intersection\n");
++				return true;
++			}
++			else return false;
++		}
++		else
++		{
++			float check_dist = radius_x * sin(y_dn);
++			float dist = check_dist / cos(y_dn + angle + PI);
++			if (dist < remaining_range) //il sensore incontra il bordo inferiore di questo segmento
++			{
++				float z = dist * sin(y_dn + angle + PI);
++				float check = radius_x * cos(y_dn);
++				dist_returned = dist;
++				angle_returned = -(-angle - y_dn);
++				x_returned =  check + z - radius_min;
++//				printf ("\nDown Boarder Intersection\n");
++				return true;
++			}
++			else return false;
++		}
++	}
++	else return false;
++}
+diff --git a/src/libs/raceengineclient/sensors.h b/src/libs/raceengineclient/sensors.h
+new file mode 100644
+index 0000000..5d8a180
+--- /dev/null
++++ b/src/libs/raceengineclient/sensors.h
+@@ -0,0 +1,74 @@
++/***************************************************************************
++ 
++    file                 : sensors.h
++    copyright            : (C) 2007 Alessandro Prete
++ 
++ ***************************************************************************/
++
++/***************************************************************************
++ *                                                                         *
++ *   This program is free software; you can redistribute it and/or modify  *
++ *   it under the terms of the GNU General Public License as published by  *
++ *   the Free Software Foundation; either version 2 of the License, or     *
++ *   (at your option) any later version.                                   *
++ *                                                                         *  
++ ***************************************************************************/ 
++#ifndef _SENSORS_H_
++#define _SENSORS_H_
++
++#include <stdio.h>
++#include <math.h>
++#include <car.h>
++#include <robottools.h>
++#include <raceman.h>
++
++class SingleSensor {
++	public:
++		inline void init(CarElt *car) { this->car = car; }
++
++		void setSingleSensor(float angle, float range);
++		inline float getSingleSensorOut() { return sensor_out; }
++		void update();
++
++	protected:
++		float sensor_calc_str(tTrackSeg *seg, float x, float y, float sensor_angle, float remaining_range);
++		float sensor_calc_lft_rgt(tTrackSeg *seg, float x, float y, float sensor_angle, float remaining_range);
++		
++		bool check_max_circle_intersect(float angle, float radius_max, float radius_x, float y_dn, float y_up, float remaining_range, float &dist_returned);
++		bool check_min_circle_intersect(float angle, float radius_min, float radius_x, float y_dn, float y_up, float remaining_range, float &dist_returned);
++		bool check_up_border_intersect(float angle, float radius_min, float radius_x, float y_up, float remaining_range, float &dist_returned, float &angle_returned, float &x_returned);
++		bool check_down_border_intersect(float angle, float radius_min, float radius_x, float y_dn, float remaining_range, float &dist_returned, float &angle_returned, float &x_returned);
++
++		float sensor_range; //meters
++		float sensor_angle; //radians
++		float sensor_out;	//meters
++
++		tCarElt *car;
++};
++
++class Sensors {
++	public:
++		Sensors(tCarElt *car, int sensors_number);
++		~Sensors();
++
++		//Params:
++		//			id from 0 to sensors_number-1
++		//			angle in degree, positive for left angle, negative for right angle
++		//			range in meters
++		void setSensor(int sensor_id, float angle, float range);
++
++		//Return Value:
++		//				sensor range if no boarder detected in the range
++		//				border distance if boarder detected
++		//note:	if the car reach the border the value is 0.
++		//		if the car go behind the track border the value in < 0, don't consider it!
++		float getSensorOut(int sensor_id);
++
++		void sensors_update();
++
++	protected:
++		SingleSensor *sensor;
++		int sensors_num;
++};
++
++#endif
+diff --git a/src/libs/racescreens/.depend b/src/libs/racescreens/.depend
+index cb27220..7fd6921 100644
+--- a/src/libs/racescreens/.depend
++++ b/src/libs/racescreens/.depend
+@@ -181,7 +181,67 @@ driverselect.o: driverselect.cpp /usr/include/stdc-predef.h \
+  /home/bst2017/zj/software/torcs-1.3.7/export/include/robot.h \
+  /home/bst2017/zj/software/torcs-1.3.7/export/include/racescreens.h \
+  /home/bst2017/zj/software/torcs-1.3.7/export/include/portability.h \
+- /home/bst2017/zj/software/torcs-1.3.7/config.h
++ /home/bst2017/zj/software/torcs-1.3.7/config.h \
++ /usr/include/c++/4.8/iostream /usr/include/c++/4.8/ostream \
++ /usr/include/c++/4.8/ios /usr/include/c++/4.8/iosfwd \
++ /usr/include/c++/4.8/bits/stringfwd.h \
++ /usr/include/c++/4.8/bits/memoryfwd.h \
++ /usr/include/c++/4.8/bits/postypes.h /usr/include/c++/4.8/cwchar \
++ /usr/include/c++/4.8/exception \
++ /usr/include/c++/4.8/bits/atomic_lockfree_defines.h \
++ /usr/include/c++/4.8/bits/char_traits.h \
++ /usr/include/c++/4.8/bits/stl_algobase.h \
++ /usr/include/c++/4.8/bits/functexcept.h \
++ /usr/include/c++/4.8/bits/exception_defines.h \
++ /usr/include/c++/4.8/bits/cpp_type_traits.h \
++ /usr/include/c++/4.8/ext/type_traits.h \
++ /usr/include/c++/4.8/ext/numeric_traits.h \
++ /usr/include/c++/4.8/bits/stl_pair.h /usr/include/c++/4.8/bits/move.h \
++ /usr/include/c++/4.8/bits/concept_check.h \
++ /usr/include/c++/4.8/bits/stl_iterator_base_types.h \
++ /usr/include/c++/4.8/bits/stl_iterator_base_funcs.h \
++ /usr/include/c++/4.8/debug/debug.h \
++ /usr/include/c++/4.8/bits/stl_iterator.h \
++ /usr/include/c++/4.8/bits/localefwd.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++locale.h \
++ /usr/include/c++/4.8/clocale /usr/include/locale.h \
++ /usr/include/x86_64-linux-gnu/bits/locale.h /usr/include/c++/4.8/cctype \
++ /usr/include/c++/4.8/bits/ios_base.h \
++ /usr/include/c++/4.8/ext/atomicity.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/gthr.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/gthr-default.h \
++ /usr/include/pthread.h /usr/include/sched.h \
++ /usr/include/x86_64-linux-gnu/bits/sched.h \
++ /usr/include/x86_64-linux-gnu/bits/timex.h \
++ /usr/include/x86_64-linux-gnu/bits/setjmp.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/atomic_word.h \
++ /usr/include/c++/4.8/bits/locale_classes.h /usr/include/c++/4.8/string \
++ /usr/include/c++/4.8/bits/allocator.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++allocator.h \
++ /usr/include/c++/4.8/ext/new_allocator.h /usr/include/c++/4.8/new \
++ /usr/include/c++/4.8/bits/ostream_insert.h \
++ /usr/include/c++/4.8/bits/cxxabi_forced.h \
++ /usr/include/c++/4.8/bits/stl_function.h \
++ /usr/include/c++/4.8/backward/binders.h \
++ /usr/include/c++/4.8/bits/range_access.h \
++ /usr/include/c++/4.8/bits/basic_string.h \
++ /usr/include/c++/4.8/bits/basic_string.tcc \
++ /usr/include/c++/4.8/bits/locale_classes.tcc \
++ /usr/include/c++/4.8/streambuf /usr/include/c++/4.8/bits/streambuf.tcc \
++ /usr/include/c++/4.8/bits/basic_ios.h \
++ /usr/include/c++/4.8/bits/locale_facets.h /usr/include/c++/4.8/cwctype \
++ /usr/include/wctype.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/ctype_base.h \
++ /usr/include/c++/4.8/bits/streambuf_iterator.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/ctype_inline.h \
++ /usr/include/c++/4.8/bits/locale_facets.tcc \
++ /usr/include/c++/4.8/bits/basic_ios.tcc \
++ /usr/include/c++/4.8/bits/ostream.tcc /usr/include/c++/4.8/istream \
++ /usr/include/c++/4.8/bits/istream.tcc /usr/include/c++/4.8/fstream \
++ /usr/include/c++/4.8/bits/codecvt.h /usr/include/c++/4.8/cstdio \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/basic_file.h \
++ /usr/include/x86_64-linux-gnu/c++/4.8/bits/c++io.h \
++ /usr/include/c++/4.8/bits/fstream.tcc
+ results.o: results.cpp /usr/include/stdc-predef.h /usr/include/stdlib.h \
+  /usr/include/features.h /usr/include/x86_64-linux-gnu/sys/cdefs.h \
+  /usr/include/x86_64-linux-gnu/bits/wordsize.h \
+diff --git a/src/libs/racescreens/driverselect.cpp b/src/libs/racescreens/driverselect.cpp
+index 1a54ba0..02fdad6 100644
+--- a/src/libs/racescreens/driverselect.cpp
++++ b/src/libs/racescreens/driverselect.cpp
+@@ -97,6 +97,10 @@ static void rmdsSetFocus(void * /* dummy */)
+ }
+ 
+ 
++// INFO zj changed
++// get all drivers names
++#include <iostream>
++#include <fstream>
+ static void rmdsSelect(void * /* dummy */)
+ {
+ 	char *name;
+@@ -116,6 +120,7 @@ static void rmdsSelect(void * /* dummy */)
+ 		GfParmSetStr(ds->param, buf, RM_ATTR_MODULE, curDrv->dname);
+ 		index++;
+ 		name = GfuiScrollListExtractElement(scrHandle, selectedScrollList, 0, (void**)&curDrv);
++        std::cout<<"Name :" << name<<std::endl;
+ 	}
+ 	
+ 	rmdsDeactivate(ds->nextScreen);
+@@ -181,7 +186,6 @@ static void rmSelectDeselect(void * /* dummy */ )
+ 			nbSelectedDrivers++;
+ 		}
+ 	}
+-
+ 	if (!name) {
+ 		sel = 1;
+ 		src = selectedScrollList;
+diff --git a/src/linux/torcs-bin b/src/linux/torcs-bin
+index e639b5bff8ac27e76e48484bca3018ec3e986e20..182fb36d4a4471db1a2599161370a215994c7b2f 100755
+GIT binary patch
+delta 78
+zcmV-U0I~nd$OOvB1h9kx6x`8lImrWyQhXC!fN^#JGLTQiVzZb6=mP<`vw;R@1OcG4
+k=?V`50n)Si3{M7=489nbz#jn`lVTGTgN_rojuQdA5CTRXGynhq
+
+delta 73
+zcmV-P0Ji_i$OOvB1h9kx6q97=r$~K=ekT;nMa5QATC>W3`m>k<=mP<uvw;R@1Od*o
+f=?V`50lKsK3{M7=U=uEr489nHjuW?z69K#s#S9*g
+
+-- 
+1.9.1
+

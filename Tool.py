@@ -4,17 +4,15 @@ author: zj
 file: TorcsTool.py
 time: 17-6-20
 """
-from ctypes import cdll, c_int, c_uint8, c_double, c_bool,Structure, POINTER,c_float, sizeof
-from itertools import chain
+from ctypes import cdll, c_int, c_uint8, c_double, c_bool,Structure, POINTER,c_float, sizeof,create_string_buffer,c_char_p,c_char
 import numpy as np
 import time
-import sys
 import os
 from numpy.ctypeslib import ndpointer
 import scipy.misc
 import scipy
-import math
-import matplotlib.pyplot as plt
+import operator
+import glob
 dir_path = os.path.dirname(os.path.realpath(__file__))
 lib = cdll.LoadLibrary('{}/Torcs_tool.so'.format(dir_path))
 STUCK_ANGLE = 0.8
@@ -35,26 +33,32 @@ def clip(lo, x, hi):
     else:
         return x
 
-
 class torcs_tool(object):
     class _29data(Structure):
         _fields_ = [
-            ("angle",
-             c_float),
-            ("track",
-             c_float * 19),
-            ("trackPos",
-             c_float),
-            ("speedX",
-             c_float),
-            ("speedY",
-             c_float),
-            ("speedZ",
-             c_float),
-            ("wheelSpinVel",
-             c_float * 4),
-            ("rpm",
-             c_float)
+            ("angle", c_float),
+            ("track", c_float * 19),
+            ("opponents", c_float * 36),
+            ("focus", c_float * 5),
+            ("trackPos", c_float),
+            ("speedX", c_float),
+            ("speedY", c_float),
+            ("speedZ", c_float),
+            ("wheelSpinVel", c_float * 4),
+            ("rpm", c_float),
+            ("damage", c_float),
+            ("curLapTime", c_float),
+            ("lastLapTime", c_float),
+            ("distFromStart", c_float),
+            ("distRaced", c_float),
+            ("fuel", c_float),
+            ("racePos", c_int),
+            ("gear", c_int),
+            ("z", c_float),
+            ("toleft", c_float),
+            ("toright", c_float),
+            ("radius", c_float)
+
         ]
     class read(Structure):
 
@@ -85,18 +89,31 @@ class torcs_tool(object):
              c_double)]
 
     
-    def __init__(self,grab_shot=False,key=1234):
+    def __init__(self,grab_shot=False,key=1234,resize = False):
+        #self.ipcrm(key)
         lib.init.argtypes = [c_int]
         lib.init(key)
         if grab_shot:
             self.reserveScreenShotFlag()
         self.gear = 1
+        self.resize = resize
     def __str__(self):
         return("speed:{} steer:{} gear:{} clutch:{} accel:{} brake:{}"
                .format(str(self.speed), str(self.steer), str(self.gear), str(self.clutch), str(self.accel), str(self.brake)))
 
+    def ipcrm(self,key):
+        os.system('ipcrm -M {}'.format(key))
+
     def reserveScreenShotFlag(self):
         lib.reserveScreenShotFlag()
+
+    def changeTrack(self,track):
+        lib.setTrack.argtypes = [c_char_p]
+        lib.setTrack(track)
+
+    def changeTrackOk(self,track):
+        lib.setTrackOk.argtypes = [c_char]
+        lib.setTrackOk(track)
 
     def getStateCount(self):
         return len(self.allData)
@@ -107,22 +124,13 @@ class torcs_tool(object):
 
     @property
     def get29Data(self):
-
         lib.get29Data.restype = POINTER(self._29data)
         x = lib.get29Data().contents
-        # y = [x.speed_x,x.speed_y,x.speed_z,x.steer,x.brake]
-        # array = x.track
+        result = {k[0]:np.asarray(getattr(x,k[0])) for k in x._fields_}
+        result['img'] = self.image
+        #result['radius'] = self.radius
+        return result
 
-        array = [getattr(x, key[0]) for key in x._fields_]
-        result = []
-        for i in array:
-            if isinstance(i,float):
-                result.append(i)
-            else:
-                result.extend(i)
-        # array = [i if isinstance(i,float) else chain(i) for i in array]
-        # result[-8] *= 300
-        return np.asarray(result,dtype=np.float32)[None,:]
     @property
     def allData(self):
         lib.getStruct.restype = POINTER(self.read)
@@ -149,7 +157,8 @@ class torcs_tool(object):
         lib.getScreenshot.restype = ndpointer(
             dtype=c_uint8, shape=(480, 640, 3))
         image = np.flipud(lib.getScreenshot())
-        image = scipy.misc.imresize(image, [240, 320])
+        if self.resize:
+            image = scipy.misc.imresize(image, [240, 320])
         return image
 
     def stop(self):
@@ -311,12 +320,9 @@ if __name__ == '__main__':
     import pprint
     s = torcs_tool(grab_shot=True)
     i = 0
+    start = time.time()
     while True:
         # all 29 datas from scr_server
-        print(s.get29Data)
-        #s.restart()
-        #scipy.misc.imsave('/home/zj/Desktop/torcs/{}.png'.format(str(i).zfill(9)),s.image)
-        i+=1
-        s.accel=1.
-        s.steer=1.
-        time.sleep(1)
+        data = s.get29Data
+        print(data)
+

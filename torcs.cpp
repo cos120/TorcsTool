@@ -9,6 +9,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/numpy.h>
+namespace py = pybind11;
 using namespace std;
 
 #define image_width 640
@@ -51,9 +54,6 @@ struct env_to_read_29{
     int racePos;
     int gear;
     float z;
-    float toleft;
-    float toright;
-    float radius;
 };
 //struct env_to_read_29{
 //	float angle_dqn;
@@ -102,9 +102,9 @@ class TorcsTool{
 private:
     void *shm = NULL;
     bool flg;
-    struct shared_use_st *shared;
 
 public:
+    struct shared_use_st *shared;
     TorcsTool(int key){
         int shmid = shmget((key_t)key, sizeof(struct shared_use_st),0666| IPC_CREAT);
         flg = true;
@@ -162,9 +162,6 @@ public:
 	    shared->env_read_29.racePos = 0;
 	    shared->env_read_29.gear = 0;
 	    shared->env_read_29.z = 0;
-        shared->env_read_29.toleft = 0;
-        shared->env_read_29.toright = 0;
-        shared->env_read_29.radius = 0;
 	    shared->dqn_ready = false;
         shared->map_ok = '0';
         //shared->env_read_29.angle_dqn        = 0;
@@ -180,6 +177,8 @@ public:
 
 
     void reverseGetImageFlag(){ shared->pause = 1 - shared->pause; }
+    int GetImageFlag(){ return shared->pause; }
+    int GetImageWrite(){ return shared->written; }
     void restart(){ shared->env_write.is_restart = true; }
     void stop(){ flg = false; }
 
@@ -227,13 +226,15 @@ public:
     uint8_t* getImage(){
         while(flg){
             if(shared->written == 1){
-            //printf("%s\n","123123");
                 shared->written = 0;
                 return shared->data;
             }
         }
     }
-
+    py::array_t<uint8_t> img(){
+        uint8_t* im = getImage();
+        return py::array_t<uint8_t>(std::vector<ptrdiff_t>{480, 640, 3}, im);
+    }
     env_to_read* getStruct(){
         while(true){
             if(shared->is_ready){
@@ -252,70 +253,85 @@ public:
     }
 };
 
-extern "C"{
+PYBIND11_MODULE(t, m) {
+    m.doc() = "pybind11 example plugin";
 
-//    TorcsTool* getTorcsTool(){return new TorcsTool();}
+    // define add function
+    //m.def("add", &add, "A function which adds two numbers");
 
-    TorcsTool* torcsTool = NULL;
-
-    void init(int shared_key){
-        torcsTool = new TorcsTool(shared_key);
-    }
-
-    void reserveScreenShotFlag(){torcsTool->reverseGetImageFlag();}
-
-    void stopTorcsTool(){torcsTool->stop();}
-
-    void restart(){torcsTool->restart();}
-
-    void setGear( int _gear){ torcsTool->setGear(_gear); }
-
-    void setClutch(double _clutch){ torcsTool->setClutch(_clutch);}
-
-    void setAccel(double _accel){ torcsTool->setAccel(_accel);}
-
-    void setSteer(double _steer){ torcsTool->setSteer(_steer);}
-
-    void setBrake(double _brake){ torcsTool->setBrake(_brake);}
-
-    void setTrack(char* track_name){ torcsTool->change_map(track_name);}
-    void setTrackOk(char track_ok){ torcsTool->change_map_ok(track_ok);}
-
-    double getTrackAngle(){torcsTool->getTrackAngle();}
-
-    bool isHitWall(){torcsTool->isHitWall();}
-
-    bool isFinish(){torcsTool->isFinish();}
-    bool isStuck(){torcsTool->isStuck();}
-
-    void clearHitWall(){torcsTool->clearHitWall();}
-
-    void clearFinish(){torcsTool->clearFinish();}
-    void clearStuck(){torcsTool->clearStuck();}
-
-    uint8_t* getScreenshot(){return torcsTool->getImage();}
-
-    double getSpeedX(){return torcsTool->getSpeed();}
-    double getSpeedY(){return torcsTool->getSpeed_y();}
-    double getSpeedZ(){return torcsTool->getSpeed_z();}
-
-    double getSteer(){return torcsTool->getSteer();}
-
-    int getGear(){return torcsTool->getGear();}
-
-    double getBrake(){return torcsTool->getBrake();}
-
-    double getClutch(){return torcsTool->getClutch();}
-
-    double getAccel(){return torcsTool->getAccel();}
-
-    double getRpm(){ return torcsTool->getRpm();}
-    double getTrackPos(){ return torcsTool->getTrackPos();}
-    double getRadius(){ return torcsTool->getRadius();}
-
-    env_to_read* getStruct(){return torcsTool->getStruct();}
-    env_to_read_29* get29Data(){return torcsTool->get29Data();}
-
-    float* getTrack(){return torcsTool->getTrack();}
-    float getAngle(){return torcsTool->getAngle(); }
+    // bindings to Pet class
+    py::class_<TorcsTool>(m, "TorcsTool")
+    .def(py::init<const int>())
+    .def("reverse",&TorcsTool::reverseGetImageFlag)
+    .def("get_p",&TorcsTool::GetImageFlag)
+    .def("get_w",&TorcsTool::GetImageWrite)
+    .def("acc",&TorcsTool::setAccel)
+    .def("get_img", &TorcsTool::img);
 }
+//extern "C"{
+//
+////    TorcsTool* getTorcsTool(){return new TorcsTool();}
+//
+//    TorcsTool* torcsTool = NULL;
+//
+//    void init(int shared_key){
+//        torcsTool = new TorcsTool(shared_key);
+//    }
+//
+//    void reserveScreenShotFlag(){torcsTool->reverseGetImageFlag();}
+//
+//    void stopTorcsTool(){torcsTool->stop();}
+//
+//    void restart(){torcsTool->restart();}
+//
+//    void setGear( int _gear){ torcsTool->setGear(_gear); }
+//
+//    void setClutch(double _clutch){ torcsTool->setClutch(_clutch);}
+//
+//    void setAccel(double _accel){ torcsTool->setAccel(_accel);}
+//
+//    void setSteer(double _steer){ torcsTool->setSteer(_steer);}
+//
+//    void setBrake(double _brake){ torcsTool->setBrake(_brake);}
+//
+//    void setTrack(char* track_name){ torcsTool->change_map(track_name);}
+//    void setTrackOk(char track_ok){ torcsTool->change_map_ok(track_ok);}
+//
+//    double getTrackAngle(){torcsTool->getTrackAngle();}
+//
+//    bool isHitWall(){torcsTool->isHitWall();}
+//
+//    bool isFinish(){torcsTool->isFinish();}
+//    bool isStuck(){torcsTool->isStuck();}
+//
+//    void clearHitWall(){torcsTool->clearHitWall();}
+//
+//    void clearFinish(){torcsTool->clearFinish();}
+//    void clearStuck(){torcsTool->clearStuck();}
+//
+//    uint8_t* getScreenshot(){return torcsTool->getImage();}
+//
+//    double getSpeedX(){return torcsTool->getSpeed();}
+//    double getSpeedY(){return torcsTool->getSpeed_y();}
+//    double getSpeedZ(){return torcsTool->getSpeed_z();}
+//
+//    double getSteer(){return torcsTool->getSteer();}
+//
+//    int getGear(){return torcsTool->getGear();}
+//
+//    double getBrake(){return torcsTool->getBrake();}
+//
+//    double getClutch(){return torcsTool->getClutch();}
+//
+//    double getAccel(){return torcsTool->getAccel();}
+//
+//    double getRpm(){ return torcsTool->getRpm();}
+//    double getTrackPos(){ return torcsTool->getTrackPos();}
+//    double getRadius(){ return torcsTool->getRadius();}
+//
+//    env_to_read* getStruct(){return torcsTool->getStruct();}
+//    env_to_read_29* get29Data(){return torcsTool->get29Data();}
+//
+//    float* getTrack(){return torcsTool->getTrack();}
+//    float getAngle(){return torcsTool->getAngle(); }
+//}
