@@ -97,6 +97,7 @@ class torcs_tool(object):
             self.reserveScreenShotFlag()
         self.gear = 1
         self.resize = resize
+        self.pre_damage = 0
     def __str__(self):
         return("speed:{} steer:{} gear:{} clutch:{} accel:{} brake:{}"
                .format(str(self.speed), str(self.steer), str(self.gear), str(self.clutch), str(self.accel), str(self.brake)))
@@ -128,6 +129,9 @@ class torcs_tool(object):
         x = lib.get29Data().contents
         result = {k[0]:np.asarray(getattr(x,k[0])) for k in x._fields_}
         result['img'] = self.image
+        result['hit'] = result['damage'] - self.pre_damage > 0
+        result['is_finish'] = self.is_finish
+        self.pre_damage = result['damage']
         #result['radius'] = self.radius
         return result
 
@@ -275,12 +279,8 @@ class torcs_tool(object):
     @property
     def is_finish(self):
         lib.isFinish.restype = c_bool
-
-        r = lib.isFinish()
-        while lib.isFinish():
-            # time.sleep(0.1)
-            lib.clearFinish()
-        return r
+        is_finish = lib.isFinish()
+        return is_finish
 
         # lib.clearFinish()
         # print(f)
@@ -291,7 +291,7 @@ class torcs_tool(object):
         lib.clearFinish()
         lib.clearHitWall()
         lib.clearStuck()
-
+        self.pre_damage = 0
     @property
     def is_stuck(self):
         lib.isStuck.restype = c_bool
@@ -315,6 +315,10 @@ class torcs_tool(object):
     def angle(self):
         lib.getAngle.restype = c_float
         return lib.getAngle()
+
+    def set_adv_speed(self,speed):
+        lib.setSpeed.argtypes = [c_float]
+        lib.setSpeed(speed)
 
 if __name__ == '__main__':
     import pprint

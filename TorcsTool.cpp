@@ -95,6 +95,7 @@ struct shared_use_st
     bool dqn_ready;
     char map_name[100];
     char map_ok;
+    float set_speed_main;
 };
 
 
@@ -167,6 +168,7 @@ public:
         shared->env_read_29.radius = 0;
 	    shared->dqn_ready = false;
         shared->map_ok = '0';
+        shared->set_speed_main = 10;
         //shared->env_read_29.angle_dqn        = 0;
         //shared->env_read_29.track_pos_dqn    = 0;
         //shared->env_read_29.speed_x_dqn      = 0;
@@ -199,6 +201,9 @@ public:
     }
     void change_map_ok(char map_o){
         shared->map_ok = map_o;
+    }
+    void set_speed(float speed){
+        shared->set_speed_main = speed;
     }
     bool isHitWall(){return shared->is_hit_wall;}
     bool isFinish(){return shared->is_finish;}
@@ -280,13 +285,14 @@ extern "C"{
 
     void setTrack(char* track_name){ torcsTool->change_map(track_name);}
     void setTrackOk(char track_ok){ torcsTool->change_map_ok(track_ok);}
+    void setSpeed(float speed){ torcsTool->set_speed(speed);}
 
-    double getTrackAngle(){torcsTool->getTrackAngle();}
+    double getTrackAngle(){return torcsTool->getTrackAngle();}
 
-    bool isHitWall(){torcsTool->isHitWall();}
+    bool isHitWall(){return torcsTool->isHitWall();}
 
-    bool isFinish(){torcsTool->isFinish();}
-    bool isStuck(){torcsTool->isStuck();}
+    bool isFinish(){return torcsTool->isFinish();}
+    bool isStuck(){return torcsTool->isStuck();}
 
     void clearHitWall(){torcsTool->clearHitWall();}
 

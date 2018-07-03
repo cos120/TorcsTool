@@ -46,7 +46,7 @@ class TorcsEnv:
     def __init__(self,torcs_path,grab_img = True,memory_key = None):
 
         assert memory_key, 'you must specific shared memory key'
-        torcs_path = '/home/bst2017/zj/software/bin/bin'
+        torcs_path = '/home/bst2017/zj/software/bin'
         rel = '/home/bst2017/zj/software/torcs-1.3.7/data'
         self.track_category_name = track_category_name
         self.all_track_name = all_track_names
@@ -56,7 +56,7 @@ class TorcsEnv:
         time.sleep(1)
         self.tool = Tool.torcs_tool(grab_shot=grab_img ,key=memory_key)
         time.sleep(0.5)
-        #os.system('sh /home/bst2017/zj/projects/back_up_ddpg/autostart.sh')
+        os.system('sh /home/bst2017/zj/projects/back_up_ddpg/autostart.sh')
         time.sleep(0.5)
         self.time_step = 0
         self.begin_protection = 0
@@ -74,7 +74,7 @@ class TorcsEnv:
         norm.rpm = 10000.
         norm.track = 200.
         norm.trackPos = None
-        norm.wheelSpinVel = None
+        norm.wheelSpinVel = 100.
         norm.radius = None
         norm.toleft = None
         norm.toright = None
