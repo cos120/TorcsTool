@@ -95,7 +95,8 @@ struct shared_use_st
     bool dqn_ready;
     char map_name[100];
     char map_ok;
-    float set_speed_main;
+    float set_speed_main[100];
+    int robot_count;
 };
 
 
@@ -168,7 +169,9 @@ public:
         shared->env_read_29.radius = 0;
 	    shared->dqn_ready = false;
         shared->map_ok = '0';
-        shared->set_speed_main = 10;
+        for(int i = 0;i<100;i++){
+            shared->set_speed_main[i] = 100;
+        }
         //shared->env_read_29.angle_dqn        = 0;
         //shared->env_read_29.track_pos_dqn    = 0;
         //shared->env_read_29.speed_x_dqn      = 0;
@@ -202,9 +205,13 @@ public:
     void change_map_ok(char map_o){
         shared->map_ok = map_o;
     }
-    void set_speed(float speed){
-        shared->set_speed_main = speed;
+    void set_speed(void* speed){
+        for(int i = 0;i < shared->robot_count ;i++){
+            //std::cout<<((float*)speed)[i]<<std::endl;
+            shared->set_speed_main[i] = ((float*)speed)[i];
+        }
     }
+    int getRobotCount(){return shared->robot_count;}
     bool isHitWall(){return shared->is_hit_wall;}
     bool isFinish(){return shared->is_finish;}
     bool isStuck(){
@@ -285,7 +292,7 @@ extern "C"{
 
     void setTrack(char* track_name){ torcsTool->change_map(track_name);}
     void setTrackOk(char track_ok){ torcsTool->change_map_ok(track_ok);}
-    void setSpeed(float speed){ torcsTool->set_speed(speed);}
+    void setSpeed(void* speed){ torcsTool->set_speed(speed);}
 
     double getTrackAngle(){return torcsTool->getTrackAngle();}
 
@@ -308,6 +315,7 @@ extern "C"{
     double getSteer(){return torcsTool->getSteer();}
 
     int getGear(){return torcsTool->getGear();}
+    int getRobotCount(){return torcsTool->getRobotCount();}
 
     double getBrake(){return torcsTool->getBrake();}
 

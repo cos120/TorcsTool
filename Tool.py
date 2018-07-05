@@ -4,7 +4,7 @@ author: zj
 file: TorcsTool.py
 time: 17-6-20
 """
-from ctypes import cdll, c_int, c_uint8, c_double, c_bool,Structure, POINTER,c_float, sizeof,create_string_buffer,c_char_p,c_char
+from ctypes import cdll, c_int, c_uint8, c_double, c_bool,Structure, POINTER,c_float, sizeof,create_string_buffer,c_char_p,c_char,c_void_p
 import numpy as np
 import time
 import os
@@ -316,9 +316,18 @@ class torcs_tool(object):
         lib.getAngle.restype = c_float
         return lib.getAngle()
 
+    def robot_count(self):
+        lib.getRobotCount.restype = c_int
+        while lib.getRobotCount() == 0:
+            time.sleep(0.1)
+        return lib.getRobotCount()
     def set_adv_speed(self,speed):
-        lib.setSpeed.argtypes = [c_float]
-        lib.setSpeed(speed)
+        lib.setSpeed.argtypes = [c_void_p]
+        #print(self.robot_count())
+        assert len(speed) == self.robot_count() , 'Speed vector size must equal robot_count'
+        arr = (c_float * self.robot_count())(*speed)
+        #print(arr[0])
+        lib.setSpeed(arr)
 
 if __name__ == '__main__':
     import pprint
