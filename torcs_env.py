@@ -43,10 +43,10 @@ def clip(lo, x, hi):
 class TorcsEnv:
     terminal_judge_start = 100  # If after 100 timestep still no progress, terminated
     termination_limit_progress = 5  #
-    def __init__(self,torcs_path,grab_img = True,memory_key = None):
+    def __init__(self,torcs_path = '/home/bst2017/zj/software/bin',grab_img = True,memory_key = None):
 
         assert memory_key, 'you must specific shared memory key'
-        torcs_path = '/home/bst2017/zj/software/bin'
+        #torcs_path = '/home/bst2017/zj/software/bin'
         rel = '/home/bst2017/zj/software/torcs-1.3.7/data'
         self.track_category_name = track_category_name
         self.all_track_name = all_track_names
@@ -107,9 +107,10 @@ class TorcsEnv:
             track = self.all_track_name[index % len(self.all_track_name)]
         else:
             track = random.choice(self.all_track_name)
+        track_name = all_log_track_names[self.all_track_name.index(track)]
         self.tool.changeTrack(track.encode('utf-8'))
         self.tool.changeTrackOk('1'.encode('utf-8'))
-        return track
+        return track_name
         #self.tool.changeTrack('tracks/dirt/dirt-1/dirt-1.xml'.encode('utf-8'))
 
     #def change_track_ok(self):

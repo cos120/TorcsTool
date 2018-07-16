@@ -128,7 +128,7 @@ class torcs_tool(object):
         lib.get29Data.restype = POINTER(self._29data)
         x = lib.get29Data().contents
         result = {k[0]:np.asarray(getattr(x,k[0])) for k in x._fields_}
-        result['img'] = self.image
+        result['img'] = self.image # 阻塞抓取图片，决定交互的fps
         result['hit'] = result['damage'] - self.pre_damage > 0
         result['is_finish'] = self.is_finish
         self.pre_damage = result['damage']
@@ -329,6 +329,20 @@ class torcs_tool(object):
         #print(arr[0])
         lib.setSpeed(arr)
 
+    def filter_track(self,filtered_track_path):
+        assert isinstance(filtered_track_path,str)
+        pre_track = None
+        s = None
+        with open('{}/track.txt'.format(dir_path)) as tracks, open(filtered_track_path,'w') as save_track:
+            for line in tracks:
+                line = line.strip()
+                track_path , _track_category , _track_name = line.split('\t')
+                self.changeTrack(track_path.encode('utf-8'))
+                self.changeTrackOk('1'.encode('utf-8'))
+                self.restart()
+                s = input()
+                if s:
+                    save_track.write(line + '\n')
 if __name__ == '__main__':
     import pprint
     s = torcs_tool(grab_shot=True)
